@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+<rect width="72" height="72" fill="#0B1E33"/>
+<text x="36" y="38" text-anchor="middle" font-family="IBM Plex Sans Arabic, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="1" fill="#FFFFFF">EMD</text>
+<g fill="#C9A24A"><circle cx="17" cy="51" r="6"/><rect x="20" y="49" width="30" height="4" rx="2"/><path d="M48 48 L53 45 A7 7 0 1 1 53 57 L48 54 Z"/></g>
+<polygon points="20,51 18.5,48.4 15.5,48.4 14,51 15.5,53.6 18.5,53.6" fill="#0B1E33"/>
+<rect x="56" y="49" width="10" height="4" fill="#0B1E33"/>
+</svg>

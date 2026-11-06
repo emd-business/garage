@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 30 245 100" role="img" aria-label="EMD Garage">
+<text x="140" y="80" text-anchor="middle" font-family="IBM Plex Sans Arabic, Arial, sans-serif" font-size="74" font-weight="700" letter-spacing="8" fill="#0B1E33">EMD</text>
+<g fill="#C9A24A"><circle cx="46" cy="112" r="17"/><rect x="56" y="106" width="156" height="12" rx="6"/><path d="M206 104 L220 96 A19 19 0 1 1 220 128 L206 120 Z"/></g>
+<polygon points="55,112 50.5,104.2 41.5,104.2 37,112 41.5,119.8 50.5,119.8" fill="#FFFFFF"/>
+<rect x="231" y="105" width="30" height="14" fill="#FFFFFF"/>
+</svg>
