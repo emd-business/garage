@@ -1,5 +1,5 @@
 // App-shell cache. Data requests (Supabase) always go to the network.
-const VERSION = 'emd-garage-v7';
+const VERSION = 'emd-garage-v8';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/api.js', 'js/format.js', 'js/ui.js', 'js/state.js',
   'js/views/dashboard.js', 'js/views/board.js', 'js/views/intake.js', 'js/views/job.js', 'js/views/print.js',
   'js/views/customers.js', 'js/views/inventory.js', 'js/views/settings.js', 'js/views/appointments.js',
@@ -10,7 +10,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== 'emd-garage-data').map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);

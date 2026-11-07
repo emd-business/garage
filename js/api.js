@@ -105,6 +105,7 @@ export const auth = {
       }).catch(() => {});
     }
     save(null);
+    clearOffline();
   },
 };
 
@@ -119,15 +120,62 @@ async function rest(method, path, { body, prefer, headers = {} } = {}) {
   const h = { apikey: SUPABASE_KEY, 'Content-Type': 'application/json', ...headers };
   if (t) h.Authorization = `Bearer ${t}`;
   if (prefer) h.Prefer = prefer;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method, headers: h, body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const read = method === 'GET' || (method === 'POST' && READ_RPC.has(path.slice(4)) && path.startsWith('rpc/'));
+  const key = read ? cacheKey(method, path, body) : null;
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method, headers: h, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (e) {
+    // No network: show the last saved copy of what was read before; never pretend a save worked
+    if (read) {
+      const cached = await cacheGet(key);
+      if (cached !== undefined) { setOffline(true, true); return cached; }
+    }
+    setOffline(true, false);
+    throw new ApiError(read ? 'لا يوجد اتصال بالإنترنت، ولم تُفتح هذه الصفحة من قبل على هذا الجهاز' : 'لا يوجد اتصال بالإنترنت. لم يُحفظ شيء، حاول عند عودة الاتصال', 0);
+  }
   if (res.status === 401 && session) {
     await auth.refresh();
     return rest(method, path, { body, prefer, headers });
   }
-  return parse(res);
+  const data = await parse(res);
+  setOffline(false);
+  if (read) cachePut(key, data);
+  return data;
 }
+
+// ---------- Offline copies of what was read ----------
+// Reads that change nothing; their answers are kept on this device for viewing without internet.
+const READ_RPC = new Set(['dashboard_today', 'garage_staff', 'my_role', 'is_platform_admin', 'report_summary', 'trial_balance', 'account_ledger',
+  'customer_statement', 'supplier_statement', 'service_due', 'monthly_costs', 'job_time', 'job_lines_for_tech', 'warranty_check', 'tech_time',
+  'admin_garages', 'my_subscription', 'portal_job']);
+const CACHE = 'emd-garage-data';
+function cacheKey(method, path, body) {
+  const who = (session && session.user && session.user.id) || 'anon';
+  return `${SUPABASE_URL}/__offline/${who}/${method}/${encodeURIComponent(path)}/${body === undefined ? '' : encodeURIComponent(JSON.stringify(body))}`;
+}
+async function cachePut(key, data) {
+  try { const c = await caches.open(CACHE); await c.put(key, new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json', 'x-saved': new Date().toISOString() } })); } catch { /* no cache API */ }
+}
+async function cacheGet(key) {
+  try { const c = await caches.open(CACHE); const r = await c.match(key); return r ? r.json() : undefined; } catch { return undefined; }
+}
+export async function clearOffline() { try { await caches.delete(CACHE); } catch { /* ignore */ } }
+
+let offlineState = null;
+function setOffline(off, fromCache) {
+  const next = off ? (fromCache ? 'cache' : 'down') : 'up';
+  if (next === offlineState) return;
+  offlineState = next;
+  let bar = document.getElementById('offline-bar');
+  if (next === 'up') { bar?.remove(); return; }
+  if (!bar) { bar = document.createElement('div'); bar.id = 'offline-bar'; bar.setAttribute('role', 'status'); document.body.prepend(bar); }
+  bar.textContent = 'لا يوجد اتصال بالإنترنت. تعرض آخر بيانات محفوظة على هذا الجهاز، والحفظ متوقف حتى يعود الاتصال.';
+}
+window.addEventListener('offline', () => setOffline(true, true));
+window.addEventListener('online', () => { setOffline(false); window.dispatchEvent(new HashChangeEvent('hashchange')); });
 
 // db.get('customers', {select:'*', phone:'eq.9', order:'name'})
 function qs(params = {}) {

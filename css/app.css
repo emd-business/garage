@@ -283,3 +283,5 @@ html[dir="ltr"] .doc-head .g-meta { text-align: right !important; }
 html[dir="ltr"] .doc-head .g-meta[dir="ltr"] { text-align: left !important; }
 html[dir="ltr"] body { font-family: "IBM Plex Sans Arabic", Inter, system-ui, sans-serif; }
 html[lang="en"] .doc-title small { display: none; }
+
+#offline-bar { position: sticky; top: 0; z-index: 60; background: var(--warning-soft); color: var(--warning-ink); padding: 10px 16px; font-size: 14px; font-weight: 600; text-align: center; border-bottom: 1px solid var(--warning-ink); }

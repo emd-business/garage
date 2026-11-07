@@ -1060,5 +1060,8 @@ export default {
 "لا يمكن تعديل بنود أمر عمل له دفعات مسجلة": "Lines can't change on a job order with recorded payments",
 "لا يوجد كراج نشط": "No active garage",
 "يجب تسجيل الدخول": "You must sign in",
-"يمكن حذف القيود اليدوية فقط": "Only manual entries can be deleted"
+"يمكن حذف القيود اليدوية فقط": "Only manual entries can be deleted",
+"لا يوجد اتصال بالإنترنت، ولم تُفتح هذه الصفحة من قبل على هذا الجهاز": "No internet connection, and this page hasn't been opened on this device before",
+"لا يوجد اتصال بالإنترنت. لم يُحفظ شيء، حاول عند عودة الاتصال": "No internet connection. Nothing was saved; try again when you're back online",
+"لا يوجد اتصال بالإنترنت. تعرض آخر بيانات محفوظة على هذا الجهاز، والحفظ متوقف حتى يعود الاتصال.": "No internet connection. Showing the last data saved on this device; saving is paused until you're back online."
 };
