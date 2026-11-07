@@ -2,6 +2,7 @@
 import { db } from '../api.js';
 import { esc, money, num, idn, round3, STATUS, carName, plate, dateTime, date, waLink } from '../format.js';
 import { toast } from '../ui.js';
+import { langButton } from '../i18n.js';
 
 const STEPS = ['received', 'inspection', 'approval', 'repair', 'qc', 'ready', 'delivered'];
 const COND = { good: ['سليم', 'success'], attention: ['يحتاج انتباه', 'warning'], urgent: ['عاجل', 'danger'] };
@@ -36,9 +37,9 @@ export default async function portal([token]) {
       <strong class="num" style="white-space:nowrap">${money(Number(l.qty) * Number(l.unit_price))}</strong></div>`;
 
   return {
-    html: `<div class="portal" dir="rtl">
+    html: `<div class="portal">
       <header class="portal-head">${g.logo_url ? `<img src="${esc(g.logo_url)}" alt="">` : '<img src="assets/icon.svg" alt="">'}
-        <div><div class="g">${esc(g.name)}</div><div class="s">أمر عمل ${idn(j.job_no)}${g.phone ? ` · <bdi class="ltr">${esc(g.phone)}</bdi>` : ''}</div></div></header>
+        <div style="flex:1"><div class="g">${esc(g.name)}</div><div class="s">أمر عمل ${idn(j.job_no)}${g.phone ? ` · <bdi class="ltr">${esc(g.phone)}</bdi>` : ''}</div></div>${langButton('btn small ghost lang-btn')}</header>
 
       <section class="card stack">
         <p>${d.customer ? `أهلاً ${esc(d.customer)}،` : 'أهلاً،'} هذه حالة سيارتك:</p>

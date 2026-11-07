@@ -1,3 +1,4 @@
+import { LOCALE } from '../i18n.js';
 import { db } from '../api.js';
 import { idn, esc, money, num, badge, plate, carName, dateTime } from '../format.js';
 import { icon } from '../ui.js';
@@ -36,7 +37,7 @@ export default async function dashboard() {
     title: 'اليوم',
     html: `
     <div class="page-head">
-      <div><h1>اليوم في ${esc(ctx.garage.name)}</h1><p class="lead">${esc(new Intl.DateTimeFormat('ar-OM', { timeZone: 'Asia/Muscat', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()))}</p></div>
+      <div><h1>اليوم في ${esc(ctx.garage.name)}</h1><p class="lead">${esc(new Intl.DateTimeFormat(LOCALE, { timeZone: 'Asia/Muscat', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()))}</p></div>
       ${ctx.can('owner', 'manager', 'reception') ? `<a class="btn primary" href="#/intake">${icon('plus')} استلام سيارة</a>` : ''}
     </div>
     <div class="kpis">

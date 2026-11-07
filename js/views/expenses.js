@@ -1,3 +1,4 @@
+import { LOCALE } from '../i18n.js';
 import { db } from '../api.js';
 import { esc, money, num, date, METHODS } from '../format.js';
 import { icon, toast, field, options, openDialog, busy } from '../ui.js';
@@ -26,7 +27,7 @@ export default async function expenses([month]) {
   const byCat = {};
   list.forEach((e) => { byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount); });
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const monthName = new Intl.DateTimeFormat('ar-OM', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${m}-15T00:00:00Z`));
+  const monthName = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${m}-15T00:00:00Z`));
 
   return {
     title: 'المصروفات',

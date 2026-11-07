@@ -1,3 +1,4 @@
+import { LOCALE, langButton } from './i18n.js';
 // EMD Garage — app entry: auth, onboarding, shell and hash router.
 import { auth, db } from './api.js';
 import { esc, ROLES } from './format.js';
@@ -18,6 +19,7 @@ import reports from './views/reports.js';
 import pricing from './views/pricing.js';
 import accounting, { ledger, statement } from './views/accounting.js';
 import portal from './views/portal.js';
+import admin from './views/admin.js';
 import settings from './views/settings.js';
 
 const root = document.getElementById('app');
@@ -35,11 +37,13 @@ const NAV = [
   { href: '#/accounting', key: 'accounting', label: 'المحاسبة', icon: 'book', roles: ['owner', 'manager', 'accountant'] },
   { href: '#/pricing', key: 'pricing', label: 'التسعير', icon: 'calc', roles: ['owner', 'manager'] },
   { href: '#/settings', key: 'settings', label: 'الإعدادات', icon: 'settings', roles: ['owner', 'manager'] },
+  { href: '#/admin', key: 'admin', label: 'إدارة EMD', icon: 'chart', roles: [], admin: true },
 ];
+const canSee = (n) => (n.admin ? ctx.isAdmin : n.roles.includes(ctx.role));
 
 const ROUTES = {
   '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, item: itemView, settings,
-  appointments, purchases, expenses, reports, pricing, more: moreView, accounting, ledger, statement,
+  appointments, purchases, expenses, reports, pricing, more: moreView, accounting, ledger, statement, admin,
 };
 
 function parseRoute() {
@@ -54,9 +58,10 @@ function homeFor(role) {
 }
 
 function shell(activeKey) {
-  const items = NAV.filter((n) => n.roles.includes(ctx.role));
+  const items = NAV.filter(canSee);
   const link = (n, cls = '') => `<a href="${n.href}" class="${cls}" ${n.key === activeKey ? 'aria-current="page"' : ''}>${icon(n.icon)}<span>${esc(n.label)}</span></a>`;
-  const trial = ctx.garage.status === 'trial' ? '<div class="notice info">نسخة تجريبية</div>' : '';
+  const left = ctx.garage.trial_ends_at ? Math.ceil((new Date(ctx.garage.trial_ends_at) - Date.now()) / 864e5) : null;
+  const trial = ctx.garage.status === 'trial' ? `<div class="notice ${left !== null && left <= 7 ? 'warn' : 'info'}">${left === null ? 'نسخة تجريبية' : left > 0 ? `التجربة تنتهي بعد ${new Intl.NumberFormat(LOCALE).format(left)} يوماً` : 'انتهت الفترة التجريبية'}</div>` : '';
   return `<div class="shell">
     <aside class="side" aria-label="القائمة الرئيسية">
       <div class="brand"><img src="assets/logo-on-dark.svg" alt="EMD Garage"></div>
@@ -65,6 +70,7 @@ function shell(activeKey) {
       <div class="foot">
         ${trial}
         <span>${esc(ctx.profile.full_name || '')} · ${esc(ROLES[ctx.role] || '')}</span>
+        ${langButton('btn small ghost lang-btn')}
         <button type="button" data-signout>${icon('out')} تسجيل الخروج</button>
       </div>
     </aside>
@@ -72,7 +78,7 @@ function shell(activeKey) {
       <header class="topbar">
         <img src="assets/logo-on-dark.svg" alt="EMD Garage">
         <span class="garage-name">${esc(ctx.garage.name)}</span>
-        <button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button>
+        <span class="row" style="gap:4px;flex-wrap:nowrap">${langButton('btn small ghost lang-btn')}<button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button></span>
       </header>
       <main class="content" id="view" tabindex="-1"><div class="skeleton"></div></main>
       <nav class="bottomnav" aria-label="القائمة">${(items.length > 5 ? items.slice(0, 4) : items).map((n) => link(n)).join('')}${items.length > 5 ? `<a href="#/more" ${activeKey === 'more' || !items.slice(0, 4).some((n) => n.key === activeKey) ? 'aria-current="page"' : ''}>${icon('more')}<span>المزيد</span></a>` : ''}</nav>
@@ -96,11 +102,13 @@ async function route() {
   const r0 = parseRoute();
   if (r0.key === 't') return renderPortal(r0.params);
   if (!auth.session) return renderAuth();
+  if (ctx.garage && !ctx.role && ctx.garage.status === 'suspended') return renderSuspended();
   if (!ctx.garage || !ctx.role) return renderOnboarding();
   const { key, params } = parseRoute();
   const view = ROUTES[key];
   const navKey = { item: 'inventory', customer: 'customers', ledger: 'accounting' }[key] || key;
-  const allowed = key === 'print' || key === 'statement' || key === 'job' || key === 'more' || NAV.find((n) => n.key === navKey)?.roles.includes(ctx.role);
+  const navItem = NAV.find((n) => n.key === navKey);
+  const allowed = key === 'print' || key === 'statement' || key === 'job' || key === 'more' || (navItem && canSee(navItem));
   if (!view || !allowed) { location.hash = `#/${homeFor(ctx.role)}`; return; }
   const seq = ++renderSeq;
 
@@ -139,11 +147,11 @@ export function rerender() { delete root.dataset.active; route(); }
 
 // Phone-size menu with every section the role can open
 async function moreView() {
-  const items = NAV.filter((n) => n.roles.includes(ctx.role));
+  const items = NAV.filter(canSee);
   return {
     title: 'المزيد',
     html: `<div class="page-head"><div><h1>القائمة</h1><p class="lead">${esc(ctx.garage.name)} · ${esc(ROLES[ctx.role])}</p></div></div>
-      <section class="card"><div class="list">${items.map((n) => `<a class="list-item" href="${n.href}"><span class="row" style="gap:12px">${icon(n.icon).replace('<svg', '<svg style="width:22px;height:22px"')} ${esc(n.label)}</span>${icon('arrow').replace('<svg', '<svg style="width:18px;height:18px"')}</a>`).join('')}
+      <section class="card"><div class="list"><div class="list-item"><span>Language · اللغة</span>${langButton('btn small')}</div>${items.map((n) => `<a class="list-item" href="${n.href}"><span class="row" style="gap:12px">${icon(n.icon).replace('<svg', '<svg style="width:22px;height:22px"')} ${esc(n.label)}</span>${icon('arrow').replace('<svg', '<svg style="width:18px;height:18px"')}</a>`).join('')}
         <button type="button" class="list-item" data-signout style="width:100%;border:0;background:none;font:inherit;color:var(--danger-ink);cursor:pointer;min-height:48px">${esc('تسجيل الخروج')}</button></div></section>`,
   };
 }
@@ -181,7 +189,7 @@ function renderAuth(mode = 'in', note = '') {
           <li>رسائل واتساب جاهزة لعملائك</li>
         </ul>
       </div>
-      <p class="subtle" style="color:var(--chrome-muted)">EMD Garage · عُمان</p>
+      <p class="row subtle" style="color:var(--chrome-muted);justify-content:space-between">EMD Garage · عُمان ${langButton('btn small ghost lang-btn')}</p>
     </section>
     <section class="auth-form">
       <form class="card" novalidate>
@@ -214,6 +222,15 @@ function renderAuth(mode = 'in', note = '') {
     });
   });
   form.querySelector('input')?.focus();
+}
+
+function renderSuspended() {
+  delete root.dataset.active;
+  root.innerHTML = `<div class="auth"><section class="auth-brand"><img src="assets/logo-on-dark.svg" alt="EMD Garage">
+      <div class="stack"><h1>اشتراك ${esc(ctx.garage.name)} موقوف</h1><p style="color:var(--chrome-muted)">بياناتك محفوظة كاملة. تواصل مع فريق EMD لتجديد الاشتراك، ويعود كل شيء كما كان.</p></div>
+      <button class="btn ghost" data-signout style="color:#fff;align-self:flex-start">${icon('out')} تسجيل الخروج</button></section>
+    <section class="auth-form"><div class="card stack" style="max-width:420px"><h2>تجديد الاشتراك</h2><p class="muted">أرسل لنا رسالة وسنفعّل حسابك بعد السداد.</p>
+      <a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(`أرغب بتجديد اشتراك ${ctx.garage.name} في EMD Garage`)}" target="_blank" rel="noopener">واتساب</a></div></section></div>`;
 }
 
 // ---------- Onboarding: create a garage or join one ----------

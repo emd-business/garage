@@ -1,16 +1,17 @@
+import { LOCALE, isEn } from './i18n.js';
 // Formatting helpers: escaping, numbers, money, dates, Arabic amount in words, WhatsApp links.
 export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const nfMoney = new Intl.NumberFormat('ar-OM', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-const nfNum = new Intl.NumberFormat('ar-OM', { maximumFractionDigits: 2 });
-export const money = (n) => `${nfMoney.format(Number(n) || 0)} ر.ع`;
+const nfMoney = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const nfNum = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
+export const money = (n) => (isEn ? `${nfMoney.format(Number(n) || 0)} OMR` : `${nfMoney.format(Number(n) || 0)} ر.ع`);
 export const num = (n) => nfNum.format(Number(n) || 0);
-const nfId = new Intl.NumberFormat('ar-OM', { useGrouping: false });
+const nfId = new Intl.NumberFormat(LOCALE, { useGrouping: false });
 export const idn = (n) => nfId.format(Number(n) || 0);
 export const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
 
-const dtf = new Intl.DateTimeFormat('ar-OM', { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-const df = new Intl.DateTimeFormat('ar-OM', { timeZone: 'Asia/Muscat', year: 'numeric', month: 'long', day: 'numeric' });
+const dtf = new Intl.DateTimeFormat(LOCALE, { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const df = new Intl.DateTimeFormat(LOCALE, { timeZone: 'Asia/Muscat', year: 'numeric', month: 'long', day: 'numeric' });
 export const dateTime = (d) => (d ? dtf.format(new Date(d)) : '');
 export const date = (d) => (d ? df.format(new Date(d)) : '');
 
@@ -95,7 +96,34 @@ export function intToWords(n) {
   return parts.join(' و');
 }
 
+// ---- English amount in words ----
+const EN1 = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const EN10 = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+function en999(n) {
+  const h = Math.floor(n / 100), r = n % 100, out = [];
+  if (h) out.push(`${EN1[h]} hundred`);
+  if (r) out.push(r < 20 ? EN1[r] : EN10[Math.floor(r / 10)] + (r % 10 ? `-${EN1[r % 10]}` : ''));
+  return out.join(' and ');
+}
+function enWords(n) {
+  n = Math.floor(Math.abs(n));
+  if (!n) return 'zero';
+  const parts = [], m = Math.floor(n / 1e6), t = Math.floor((n % 1e6) / 1000), r = n % 1000;
+  if (m) parts.push(`${en999(m)} million`);
+  if (t) parts.push(`${en999(t)} thousand`);
+  if (r) parts.push(en999(r));
+  return parts.join(' ');
+}
+
 export function amountWords(amount) {
+  if (isEn) {
+    const total = Math.round((Number(amount) || 0) * 1000), rials = Math.floor(total / 1000), baisa = total % 1000;
+    const p = [];
+    if (rials) p.push(`${enWords(rials)} Omani rial${rials === 1 ? '' : 's'}`);
+    if (baisa) p.push(`${enWords(baisa)} baisa`);
+    const w = p.length ? p.join(' and ') : 'zero Omani rials';
+    return `${w.charAt(0).toUpperCase()}${w.slice(1)} only`;
+  }
   const total = Math.round((Number(amount) || 0) * 1000);
   const rials = Math.floor(total / 1000), baisa = total % 1000;
   const parts = [];

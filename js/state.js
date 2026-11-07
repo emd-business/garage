@@ -5,6 +5,7 @@ export const ctx = {
   profile: null,
   garage: null,
   role: null,
+  isAdmin: false,
   staff: [],
   get uid() { return auth.user && auth.user.id; },
   can(...roles) { return roles.includes(this.role); },
@@ -25,6 +26,7 @@ export async function loadContext() {
     db.rpc('my_role'),
   ]);
   ctx.garage = garage; ctx.role = role;
+  ctx.isAdmin = !!(await db.rpc('is_platform_admin').catch(() => false));
   if (role) ctx.staff = await db.rpc('garage_staff');
   return ctx;
 }

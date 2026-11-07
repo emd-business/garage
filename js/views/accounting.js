@@ -222,7 +222,7 @@ export async function statement([kind, id]) {
   return {
     html: `<div class="print-bar"><button class="btn primary" id="do-print">${icon('print')} اطبع أو احفظ PDF</button>
         <a class="btn" href="${isCust ? `#/customer/${id}` : '#/purchases/suppliers'}">رجوع</a></div>
-      <article class="doc" dir="rtl" lang="ar">
+      <article class="doc">
         <header class="doc-head"><div><div class="g-name">${esc(g.name)}</div>${g.name_en ? `<div class="g-meta" dir="ltr" style="text-align:right">${esc(g.name_en)}</div>` : ''}</div>
           <div class="g-meta" style="text-align:left">${g.phone ? `<div>هاتف: <bdi class="ltr">${esc(g.phone)}</bdi></div>` : ''}${g.vat_number ? `<div>الرقم الضريبي: <bdi class="ltr">${esc(g.vat_number)}</bdi></div>` : ''}</div></header>
         <div class="doc-title">كشف حساب ${isCust ? 'عميل' : 'مورد'}<small>Statement of Account</small></div>

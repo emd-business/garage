@@ -22,7 +22,7 @@ export default async function printDoc([id]) {
       <button class="btn primary" id="do-print">${icon('print')} اطبع أو احفظ PDF</button>
       <a class="btn" href="#/job/${j.id}">رجوع لأمر العمل</a>
     </div>
-    <article class="doc" dir="rtl" lang="ar">
+    <article class="doc">
       <header class="doc-head">
         <div>
           ${g.logo_url ? `<img src="${esc(g.logo_url)}" alt="" style="height:56px;margin-bottom:6px">` : ''}

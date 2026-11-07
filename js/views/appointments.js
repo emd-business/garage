@@ -1,3 +1,4 @@
+import { LOCALE } from '../i18n.js';
 import { db, like } from '../api.js';
 import { esc, num, idn, carName, dateTime, date, toLocalInput, fromLocalInput, waLink } from '../format.js';
 import { icon, toast, field, options, openDialog, busy } from '../ui.js';
@@ -15,7 +16,7 @@ const apptBadge = (s) => `<span class="badge ${APPT[s][1]}">${APPT[s][0]}</span>
 const dayStr = (d) => new Date(new Date(d).getTime() + 4 * 3600e3).toISOString().slice(0, 10);
 const dayStart = (s) => new Date(`${s}T00:00:00+04:00`).toISOString();
 const addDays = (s, n) => dayStr(new Date(`${s}T12:00:00+04:00`).getTime() + n * 864e5);
-const timeOnly = new Intl.DateTimeFormat('ar-OM', { timeZone: 'Asia/Muscat', hour: 'numeric', minute: '2-digit' });
+const timeOnly = new Intl.DateTimeFormat(LOCALE, { timeZone: 'Asia/Muscat', hour: 'numeric', minute: '2-digit' });
 
 function apptForm(a = {}, services = []) {
   return `<div class="grid form">
@@ -80,7 +81,7 @@ export default async function appointments([day]) {
 
   return {
     title: 'المواعيد',
-    html: `<div class="page-head"><div><h1>المواعيد</h1><p class="lead">${esc(new Intl.DateTimeFormat('ar-OM', { timeZone: 'Asia/Muscat', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${sel}T12:00:00+04:00`)))}</p></div>
+    html: `<div class="page-head"><div><h1>المواعيد</h1><p class="lead">${esc(new Intl.DateTimeFormat(LOCALE, { timeZone: 'Asia/Muscat', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${sel}T12:00:00+04:00`)))}</p></div>
         <button class="btn primary" id="new">${icon('plus')} موعد جديد</button></div>
       <div class="row">
         <a class="btn small" href="#/appointments/${addDays(sel, -1)}">اليوم السابق</a>
