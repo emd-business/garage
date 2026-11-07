@@ -6,10 +6,14 @@ import { uploadImage } from '../media.js';
 
 export default async function settings() {
   const g = ctx.garage;
-  const [services, invites] = await Promise.all([
+  const [services, invites, lim] = await Promise.all([
     db.get('services', { order: 'name' }),
     db.get('invites', { used_at: 'is.null', order: 'created_at.desc' }),
+    db.rpc('my_limits').catch(() => null),
   ]);
+  const usage = (n, max, word) => (max ? `<span class="badge ${n >= max ? 'warning' : 'neutral'}">${num(n)} من ${num(max)} ${word}${lim.plan ? ` · باقة ${esc(lim.plan)}` : ''}</span>` : '');
+  const fullUsers = lim && lim.max_users && lim.users >= lim.max_users;
+  const fullBranches = lim && lim.max_branches && lim.branches >= lim.max_branches;
   const roleOpts = Object.entries(ROLES).filter(([k]) => k !== 'owner');
   const appUrl = location.origin + location.pathname;
 
@@ -40,6 +44,15 @@ export default async function settings() {
         <div><button class="btn primary">احفظ البيانات</button></div>
       </form>
 
+      <section class="card stack" id="printing">
+        <h2>الطباعة</h2>
+        <p class="subtle">اختر ورق الطابعة التي تستخدمها للفواتير وعروض الأسعار وسندات القبض. تستطيع دائماً الحفظ كملف PDF من نافذة الطباعة.</p>
+        <div class="paper-pick" role="radiogroup" aria-label="ورق الطباعة">
+          ${[['a4', 'ورق A4', 'طابعة مكتبية عادية، فاتورة كاملة بالترويسة والتوقيع'], ['80mm', 'إيصال حراري ٨٠ مم', 'طابعة إيصالات صغيرة، فاتورة مختصرة بعرض الإيصال']].map(([k, t, d]) => `<label class="paper ${(g.print_paper || 'a4') === k ? 'on' : ''}"><input type="radio" name="paper" value="${k}" ${(g.print_paper || 'a4') === k ? 'checked' : ''}><strong>${t}</strong><span class="subtle">${d}</span></label>`).join('')}
+        </div>
+        <p class="subtle">ومن صفحة أمر العمل تطبع أيضاً «كرت الورشة» للفني: بيانات السيارة والشكوى والأعمال المطلوبة بلا أسعار.</p>
+      </section>
+
       <section class="card pad-0">
         <div class="card-head" style="padding:16px 20px 0"><h2>الخدمات والأسعار</h2><button class="btn small" id="add-svc">${icon('plus')} خدمة</button></div>
         <p class="subtle" style="padding:0 20px">إن تركت السعر صفراً يُحسب من الساعات × سعر ساعة العمل (${money(g.labor_rate)}).</p>
@@ -54,7 +67,7 @@ export default async function settings() {
       </section>
 
       <section class="card pad-0">
-        <div class="card-head" style="padding:16px 20px 0"><h2>الفروع</h2><button class="btn small" id="add-br">${icon('plus')} فرع</button></div>
+        <div class="card-head" style="padding:16px 20px 0"><h2>الفروع ${lim ? usage(lim.branches, lim.max_branches, 'فروع') : ''}</h2><button class="btn small" id="add-br" ${fullBranches ? 'disabled title="وصلت إلى حد الفروع في باقتك"' : ''}>${icon('plus')} فرع</button></div>
         <p class="subtle" style="padding:0 20px">لكل فرع أوامر عمله ومواعيده ومخزونه ومصروفاته، والعملاء والأصناف والحسابات مشتركة بين الفروع.</p>
         <div class="table-wrap"><table>
           <thead><tr><th>الفرع</th><th>الهاتف</th><th>العنوان</th><th>الحالة</th><th><span class="hidden">تعديل</span></th></tr></thead>
@@ -66,7 +79,7 @@ export default async function settings() {
       </section>
 
       <section class="card pad-0">
-        <div class="card-head" style="padding:16px 20px 0"><h2>الفريق</h2><button class="btn small teal" id="invite">${icon('plus')} ادعُ موظفاً</button></div>
+        <div class="card-head" style="padding:16px 20px 0"><h2>الفريق ${lim ? usage(lim.users, lim.max_users, 'مستخدمين') : ''}</h2><button class="btn small teal" id="invite" ${fullUsers ? 'disabled title="وصلت إلى حد المستخدمين في باقتك"' : ''}>${icon('plus')} ادعُ موظفاً</button></div>
         <div class="table-wrap"><table>
           <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th>${ctx.multiBranch ? '<th>الفرع</th>' : ''}<th>الحالة</th></tr></thead>
           <tbody>${ctx.staff.map((s) => `<tr><td>${esc(s.full_name)}${s.user_id === ctx.uid ? ' <span class="subtle">(أنت)</span>' : ''}</td>
@@ -75,6 +88,7 @@ export default async function settings() {
             ${ctx.multiBranch ? `<td>${s.role === 'owner' || s.user_id === ctx.uid ? 'كل الفروع' : `<select data-mbr="${s.user_id}" aria-label="فرع ${esc(s.full_name)}" style="max-width:180px"><option value="">كل الفروع</option>${ctx.branches.map((b) => `<option value="${b.id}" ${b.id === s.branch_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`}</td>` : ''}
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? '<span class="badge success">نشط</span>' : `<button class="btn small ${s.active ? 'ghost' : 'teal'}" data-active="${s.user_id}" data-to="${!s.active}">${s.active ? 'أوقف' : 'فعّل'}</button>`}</td></tr>`).join('')}</tbody>
         </table></div>
+        ${fullUsers ? '<p class="notice warn" style="margin:12px 20px">وصلت إلى حد المستخدمين في باقتك. لإضافة موظف أوقف موظفاً آخر أو تواصل مع EMD لترقية الباقة.</p>' : ''}
         ${invites.length ? `<div style="padding:12px 20px 20px"><h3>دعوات لم تُستخدم</h3><div class="list">${invites.map((i) => `<div class="list-item">
             <span><bdi class="ltr" style="font-weight:700;letter-spacing:.15em">${esc(i.code)}</bdi> · ${esc(ROLES[i.role])}${i.display_name ? ` · ${esc(i.display_name)}` : ''}<br><span class="subtle">تنتهي ${esc(dateTime(i.expires_at))}</span></span>
             <span class="row" style="gap:6px"><a class="btn small wa" target="_blank" rel="noopener" href="${esc(waLink('', inviteText(i, appUrl)))}">${icon('wa')} أرسل</a><button class="btn small ghost" data-del-inv="${i.id}" aria-label="احذف الدعوة">${icon('trash')}</button></span></div>`).join('')}</div></div>` : ''}
@@ -93,6 +107,14 @@ export default async function settings() {
         });
       });
 
+      el.querySelectorAll('[name=paper]').forEach((r) => r.addEventListener('change', async () => {
+        try {
+          await db.update('garages', { id: `eq.${g.id}` }, { print_paper: r.value });
+          await refreshGarage();
+          el.querySelectorAll('.paper').forEach((p) => p.classList.toggle('on', p.querySelector('input').checked));
+          toast('حُفظ نوع الورق');
+        } catch (err) { toast(err.message, 'error'); }
+      }));
       el.querySelector('#logo-file').addEventListener('change', async (e) => {
         const f = e.target.files[0]; if (!f) return;
         toast('جارٍ رفع الشعار…');

@@ -193,6 +193,7 @@ export default async function job([id]) {
           <h1 class="row" style="gap:10px">أمر عمل ${idn(j.job_no)} ${badge(j.status)} ${isLate(j) ? '<span class="badge danger">متأخرة</span>' : ''}${ctx.multiBranch ? ` <span class="badge neutral">${esc(ctx.branchName(j.branch_id))}</span>` : ''}${j.comeback_of ? ` <a class="badge warning" href="#/job/${j.comeback_of}">عودة ضمن الضمان</a>` : ''}</h1>
           <p class="row" style="gap:10px">${plateTag(v)} <strong>${esc(carName(v))}</strong>${office ? ` · <a href="#/customer/${c.id}">${esc(c.name || '')}</a> ${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''}` : ''}</p>
         </div>
+        <a class="btn small" href="#/print/${j.id}/card" target="_blank" rel="noopener">${icon('print')} كرت الورشة</a>
       </div>
       ${stepper}
       <div class="cols">

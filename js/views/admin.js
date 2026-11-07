@@ -38,18 +38,20 @@ export default async function admin() {
 
       <section class="card pad-0"><div class="card-head" style="padding:16px 20px 0"><h2>الكراجات</h2></div>
         ${garages.length ? `<div class="table-wrap"><table>
-          <thead><tr><th>الكراج</th><th>المالك</th><th>الحالة</th><th>المدة</th><th>الخطة</th><th class="num">المستخدمون</th><th class="num">سيارات ٣٠ يوماً</th><th>آخر نشاط</th><th><span class="hidden">إجراءات</span></th></tr></thead>
+          <thead><tr><th>الكراج</th><th>المالك</th><th>الحالة</th><th>المدة</th><th>الخطة</th><th class="num">المستخدمون</th><th class="num">الفروع</th><th class="num">سيارات ٣٠ يوماً</th><th>آخر نشاط</th><th><span class="hidden">إجراءات</span></th></tr></thead>
           <tbody>${garages.map((g) => `<tr>
             <td><strong>${esc(g.name)}</strong><br><span class="subtle">منذ ${esc(date(g.created_at))}</span></td>
             <td>${esc(g.owner_name || '')}<br><bdi class="subtle ltr">${esc(g.owner_email || '')}</bdi>${g.owner_phone || g.phone ? ` · <a href="${esc(waLink(g.owner_phone || g.phone, `مرحباً ${g.owner_name || ''}، معك فريق EMD Garage بخصوص اشتراك ${g.name}.`))}" target="_blank" rel="noopener">واتساب</a>` : ''}</td>
             <td><span class="badge ${GSTATUS[g.status][1]}">${GSTATUS[g.status][0]}</span></td>
             <td>${endCell(g)}</td>
             <td>${esc(g.plan_name || '—')}</td>
-            <td class="num">${num(g.users)}</td>
+            <td class="num">${num(g.users)}${g.max_users ? `<span class="subtle"> / ${num(g.max_users)}</span>` : ''}</td>
+            <td class="num">${num(g.branches ?? 1)}${g.max_branches ? `<span class="subtle"> / ${num(g.max_branches)}</span>` : ''}</td>
             <td class="num">${num(g.jobs_30d)}</td>
             <td>${g.last_job ? esc(date(g.last_job)) : '<span class="subtle">لا نشاط</span>'}</td>
             <td><div class="row" style="gap:6px;flex-wrap:nowrap">
               <button class="btn small teal" data-sub="${g.id}">اشتراك</button>
+              <button class="btn small" data-limits="${g.id}">الحدود</button>
               ${g.status === 'trial' ? `<button class="btn small" data-extend="${g.id}">مدّد التجربة</button>` : ''}
               ${g.status === 'suspended' ? `<button class="btn small" data-status="${g.id}" data-to="active">فعّل</button>` : `<button class="btn small ghost" data-status="${g.id}" data-to="suspended">أوقف</button>`}
             </div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty"><p>لا توجد كراجات بعد.</p></div>'}
@@ -58,7 +60,7 @@ export default async function admin() {
       <div class="grid two">
         <section class="card"><div class="card-head"><h2>خطط الاشتراك</h2><button class="btn small" id="add-plan">${icon('plus')} خطة</button></div>
           ${plans.length ? `<div class="list">${plans.map((p) => `<div class="list-item"><span><strong>${esc(p.name)}</strong>${p.active ? '' : ' <span class="badge neutral">موقوفة</span>'}<br>
-            <span class="subtle">${p.price != null ? `${money(p.price)} ${p.period === 'yearly' ? 'سنوياً' : 'شهرياً'}` : 'السعر لم يُحدَّد'}${p.max_users ? ` · حتى ${num(p.max_users)} مستخدمين` : ''}</span></span>
+            <span class="subtle">${p.price != null ? `${money(p.price)} ${p.period === 'yearly' ? 'سنوياً' : 'شهرياً'}` : 'السعر لم يُحدَّد'}${p.max_users ? ` · حتى ${num(p.max_users)} مستخدمين` : ''}${p.max_branches ? ` · حتى ${num(p.max_branches)} فروع` : ''}</span></span>
             <button class="btn small ghost" data-plan="${p.id}">تعديل</button></div>`).join('')}</div>`
     : '<p class="muted">لم تُضف خطط بعد. أضفها حين تقرر الأسعار.</p>'}
         </section>
@@ -105,15 +107,27 @@ export default async function admin() {
           d.querySelector('[name=to]').value = addDays(d.querySelector('[name=from]').value, p.period === 'yearly' ? 365 : 30);
         });
       }));
+      el.querySelectorAll('[data-limits]').forEach((b) => b.addEventListener('click', () => {
+        const x = g(b.dataset.limits);
+        openDialog(`حدود ${x.name}`, `<p class="muted">حدود خاصة بهذا الكراج تتقدّم على حدود خطته${x.plan_name ? ` (${esc(x.plan_name)})` : ''}. اتركها فارغة ليتبع حدود الخطة.</p>
+          <div class="grid form" style="grid-template-columns:1fr 1fr">
+            ${field('أقصى عدد مستخدمين', `<input name="max_users" type="number" min="1" step="1" value="${esc(x.own_max_users ?? '')}">`, { hint: `يستخدم الآن ${num(x.users)}` })}
+            ${field('أقصى عدد فروع', `<input name="max_branches" type="number" min="1" step="1" value="${esc(x.own_max_branches ?? '')}">`, { hint: `لديه الآن ${num(x.branches ?? 1)}` })}
+          </div>`, async (d) => {
+          await db.rpc('admin_set_limits', { p_garage: x.id, p_max_users: d.max_users ? Number(d.max_users) : null, p_max_branches: d.max_branches ? Number(d.max_branches) : null });
+          toast('حُفظت الحدود'); reload();
+        });
+      }));
       const planDialog = (p = {}) => openDialog(p.id ? 'تعديل الخطة' : 'خطة جديدة', `
         ${field('اسم الخطة', `<input name="name" required value="${esc(p.name || '')}">`, { req: true })}
         <div class="grid form" style="grid-template-columns:1fr 1fr">
           ${field('السعر (ر.ع)', `<input name="price" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(p.price ?? '')}">`, { hint: 'اتركه فارغاً إن لم تقرره بعد' })}
           ${field('الدورة', `<select name="period">${options([['monthly', 'شهري'], ['yearly', 'سنوي']], p.period || 'monthly')}</select>`)}
-          ${field('أقصى عدد مستخدمين', `<input name="max_users" type="number" min="1" step="1" value="${esc(p.max_users ?? '')}">`)}
+          ${field('أقصى عدد مستخدمين', `<input name="max_users" type="number" min="1" step="1" value="${esc(p.max_users ?? '')}">`, { hint: 'فارغ يعني بلا حد' })}
+          ${field('أقصى عدد فروع', `<input name="max_branches" type="number" min="1" step="1" value="${esc(p.max_branches ?? '')}">`, { hint: 'فارغ يعني بلا حد' })}
         </div>
         ${p.id ? `<label class="row" style="gap:8px"><input type="checkbox" name="active" value="1" ${p.active ? 'checked' : ''} style="width:auto;min-height:0"> متاحة</label>` : ''}`, async (d) => {
-        const row = { name: d.name, price: d.price === null ? null : Number(d.price), period: d.period, max_users: d.max_users ? Number(d.max_users) : null };
+        const row = { name: d.name, price: d.price === null ? null : Number(d.price), period: d.period, max_users: d.max_users ? Number(d.max_users) : null, max_branches: d.max_branches ? Number(d.max_branches) : null };
         if (p.id) await db.update('plans', { id: `eq.${p.id}` }, { ...row, active: !!d.active }); else await db.insert('plans', row);
         toast('حُفظت الخطة'); reload();
       });
