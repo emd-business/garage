@@ -3,14 +3,18 @@ import { esc, money, num, ROLES, dateTime, waLink } from '../format.js';
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
 import { ctx, refreshGarage } from '../state.js';
 import { uploadImage } from '../media.js';
+import { readiness } from '../einvoice.js';
 
+let itemsForReady = [];
 export default async function settings() {
   const g = ctx.garage;
   const [services, invites, lim] = await Promise.all([
     db.get('services', { order: 'name' }),
     db.get('invites', { used_at: 'is.null', order: 'created_at.desc' }),
     db.rpc('my_limits').catch(() => null),
-  ]);
+    db.get('items', { select: 'id,hs_code,active', active: 'eq.true' }).catch(() => []),
+  ]).then(([a, b, c, d]) => { itemsForReady = d; return [a, b, c]; });
+  const ready = readiness(g, itemsForReady, services);
   const usage = (n, max, word) => (max ? `<span class="badge ${n >= max ? 'warning' : 'neutral'}">${num(n)} من ${num(max)} ${word}${lim.plan ? ` · باقة ${esc(lim.plan)}` : ''}</span>` : '');
   const fullUsers = lim && lim.max_users && lim.users >= lim.max_users;
   const fullBranches = lim && lim.max_branches && lim.branches >= lim.max_branches;
@@ -51,6 +55,12 @@ export default async function settings() {
           ${[['a4', 'ورق A4', 'طابعة مكتبية عادية، فاتورة كاملة بالترويسة والتوقيع'], ['80mm', 'إيصال حراري ٨٠ مم', 'طابعة إيصالات صغيرة، فاتورة مختصرة بعرض الإيصال']].map(([k, t, d]) => `<label class="paper ${(g.print_paper || 'a4') === k ? 'on' : ''}"><input type="radio" name="paper" value="${k}" ${(g.print_paper || 'a4') === k ? 'checked' : ''}><strong>${t}</strong><span class="subtle">${d}</span></label>`).join('')}
         </div>
         <p class="subtle">ومن صفحة أمر العمل تطبع أيضاً «كرت الورشة» للفني: بيانات السيارة والشكوى والأعمال المطلوبة بلا أسعار.</p>
+      </section>
+
+      <section class="card stack" id="fawtara">
+        <div class="card-head" style="margin:0"><h2>جاهزية الفوترة الإلكترونية (فوترة)</h2><span class="badge ${ready.every((r) => r.ok) ? 'success' : 'warning'}">${num(ready.filter((r) => r.ok).length)} من ${num(ready.length)}</span></div>
+        <p class="subtle">تُلزم هيئة الضرائب الكراجات بالفوترة الإلكترونية على مراحل، وتبدأ للمنشآت الأصغر من ١ أكتوبر ٢٠٢٧. أكمل هذه البيانات من الآن، وعند التعاقد مع مزوّد معتمد يُرسل النظام فواتيرك إليه. وتستطيع من صفحة الفاتورة تنزيل ملفها بصيغة الفوترة (XML).</p>
+        <div class="list">${ready.map((r) => `<div class="list-item"><span>${r.ok ? '<span class="badge success">مكتمل</span>' : '<span class="badge warning">ناقص</span>'} ${esc(r.label)}${r.count ? ` <span class="subtle">(${num(r.count[0])} من ${num(r.count[1])})</span>` : ''}</span>${r.ok ? '' : `<span class="subtle">${esc(r.fix)}</span>`}</div>`).join('')}</div>
       </section>
 
       <section class="card pad-0">
@@ -133,9 +143,10 @@ export default async function settings() {
           ${field('الساعات المعيارية', `<input name="std_hours" type="number" step="0.25" min="0" value="${esc(s.std_hours ?? 1)}">`)}
           ${field('السعر الثابت (ر.ع)', `<input name="price" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(s.price ?? 0)}">`)}
           ${field('الضمان (يوم)', `<input name="warranty_days" type="number" step="1" min="0" inputmode="numeric" value="${esc(s.warranty_days ?? 0)}">`)}
+          ${field('رمز نوع الخدمة (فوترة)', `<input name="service_code" dir="ltr" value="${esc(s.service_code || '')}">`, { hint: 'من قائمة أنواع الخدمات لدى هيئة الضرائب' })}
         </div>
         ${s.id ? `<label class="row" style="gap:8px"><input type="checkbox" name="active" value="1" ${s.active ? 'checked' : ''} style="width:auto;min-height:0"> مفعّلة</label>` : ''}`, async (d) => {
-        const row = { name: d.name, std_hours: Number(d.std_hours || 0), price: Number(d.price || 0), warranty_days: Number(d.warranty_days || 0) };
+        const row = { name: d.name, std_hours: Number(d.std_hours || 0), price: Number(d.price || 0), warranty_days: Number(d.warranty_days || 0), service_code: d.service_code || null };
         if (s.id) await db.update('services', { id: `eq.${s.id}` }, { ...row, active: !!d.active });
         else await db.insert('services', row);
         toast('حُفظت الخدمة'); reload();

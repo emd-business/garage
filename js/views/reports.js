@@ -67,6 +67,7 @@ export default async function reports([from, to, bq]) {
             <span>إيراد العمالة</span><span class="num">${money(r.labor)}</span>
             <span>إيراد القطع</span><span class="num">${money(r.parts)}</span>
             ${Number(r.discount) ? `<span>الخصومات</span><span class="num">− ${money(r.discount)}</span>` : ''}
+            ${Number(r.credits) ? `<span>الإشعارات الدائنة (${num(r.credit_notes)})</span><span class="num">− ${money(r.credits)}</span>` : ''}
             <span><strong>صافي الإيرادات</strong></span><span class="num"><strong>${money(r.revenue)}</strong></span>
             <span>تكلفة القطع المباعة</span><span class="num">− ${money(r.cogs)}</span>
             <span><strong>مجمل الربح</strong></span><span class="num"><strong>${money(gross)}</strong></span>

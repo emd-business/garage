@@ -7,8 +7,8 @@ import { computeTotals } from './job.js';
 // Tax invoice when issued, otherwise a quotation for the customer's approval.
 // [id, format]: format is 'a4', '80mm' or 'card' (workshop card for the technician, no prices);
 // without it the garage's chosen paper is used.
-export default async function printDoc([id, fmt]) {
-  const mode = ['a4', '80mm', 'card'].includes(fmt) ? fmt : (ctx.garage.print_paper || 'a4');
+export default async function printDoc([id, fmt, cnId]) {
+  const mode = ['a4', '80mm', 'card', 'credit'].includes(fmt) ? fmt : (ctx.garage.print_paper || 'a4');
   if (mode !== 'card' && !ctx.can('owner', 'manager', 'reception', 'accountant')) throw new Error('ليس لديك صلاحية على الفواتير');
   const j = await db.one('job_orders', { id: `eq.${id}`, select: '*,vehicles(*),customers(*)' });
   if (!j) throw new Error('أمر العمل غير موجود');
@@ -21,12 +21,14 @@ export default async function printDoc([id, fmt]) {
   const g = ctx.garage, v = j.vehicles || {}, c = j.customers || {};
   const t = inv ? { labor: inv.labor_total, parts: inv.parts_total, discount: inv.discount, subtotal: inv.subtotal, vat: inv.vat, total: inv.total } : computeTotals(lines, g.vat_rate);
   const isInvoice = !!inv;
+  const cn = mode === 'credit' && inv ? await db.one('credit_notes', { id: `eq.${cnId}`, invoice_id: `eq.${inv.id}` }) : null;
+  if (mode === 'credit' && !cn) throw new Error('الإشعار الدائن غير موجود');
   const br = ctx.allBranches.find((b) => b.id === j.branch_id);
 
   const bar = `<div class="print-bar">
       <button class="btn primary" id="do-print">${icon('print')} اطبع أو احفظ PDF</button>
       <span class="seg" role="group" aria-label="نوع الورق">
-        ${mode === 'card' ? '' : [['a4', 'A4'], ['80mm', 'إيصال ٨٠ مم']].map(([k, t]) => `<a class="btn small ${mode === k ? 'teal' : ''}" href="#/print/${j.id}/${k}" ${mode === k ? 'aria-current="true"' : ''}>${t}</a>`).join('')}
+        ${mode === 'card' || mode === 'credit' ? '' : [['a4', 'A4'], ['80mm', 'إيصال ٨٠ مم']].map(([k, t]) => `<a class="btn small ${mode === k ? 'teal' : ''}" href="#/print/${j.id}/${k}" ${mode === k ? 'aria-current="true"' : ''}>${t}</a>`).join('')}
       </span>
       <a class="btn" href="#/job/${j.id}">رجوع لأمر العمل</a>
     </div>`;
@@ -66,6 +68,40 @@ export default async function printDoc([id, fmt]) {
       ${Object.keys(ck).length ? `<div style="font-size:10.5pt"><strong>عند الاستلام:</strong> ${Object.entries(ck).filter(([, val]) => val).map(([k]) => esc(k)).join(' · ') || '—'}</div>` : ''}
       <div><strong>ملاحظات الفني:</strong><div class="write-lines"><span></span><span></span><span></span></div></div>
       <div class="sign"><div>الفني</div><div>فحص الجودة</div></div>
+    </article>` };
+  }
+
+  if (mode === 'credit') {
+    return { bind, html: `${bar}<article class="doc">
+      <header class="doc-head">
+        <div>${g.logo_url ? `<img src="${esc(g.logo_url)}" alt="" style="height:56px;margin-bottom:6px">` : ''}<div class="g-name">${esc(g.name)}</div>${branchLine ? `<div class="g-meta">${esc(branchLine)}</div>` : ''}</div>
+        <div class="g-meta" style="text-align:left">
+          ${(br?.address || g.address) ? `<div>${esc(br?.address || g.address)}</div>` : ''}
+          ${(br?.phone || g.phone) ? `<div>هاتف: <bdi class="ltr">${esc(br?.phone || g.phone)}</bdi></div>` : ''}
+          ${g.cr_number ? `<div>س.ت: <bdi class="ltr">${esc(g.cr_number)}</bdi></div>` : ''}
+          ${g.vat_number ? `<div>الرقم الضريبي: <bdi class="ltr">${esc(g.vat_number)}</bdi></div>` : ''}
+        </div>
+      </header>
+      <div class="doc-title">إشعار دائن<small>Credit Note</small></div>
+      <div class="doc-grid">
+        <div><strong>رقم الإشعار:</strong> ${idn(cn.credit_no)}</div>
+        <div><strong>التاريخ:</strong> ${esc(date(cn.issued_at))}</div>
+        <div><strong>عن الفاتورة رقم:</strong> ${idn(inv.invoice_no)}</div>
+        <div><strong>تاريخ الفاتورة:</strong> ${esc(date(inv.issued_at))}</div>
+        <div><strong>العميل:</strong> ${esc(c.name || '')}</div>
+        ${c.vat_number ? `<div><strong>الرقم الضريبي للعميل:</strong> <bdi class="ltr">${esc(c.vat_number)}</bdi></div>` : `<div><strong>الهاتف:</strong> <bdi class="ltr">${esc(c.phone || '')}</bdi></div>`}
+        <div><strong>المركبة:</strong> ${esc(carName(v))} ${esc(plate(v))}</div>
+      </div>
+      <div><strong>السبب:</strong> ${esc(cn.reason)}</div>
+      <div class="totals">
+        <span>المبلغ قبل الضريبة</span><span class="num">${money(cn.subtotal)}</span>
+        <span>ضريبة القيمة المضافة ${num(cn.vat_rate)}٪</span><span class="num">${money(cn.vat)}</span>
+        <span class="grand">إجمالي الإشعار</span><span class="num grand">${money(cn.total)}</span>
+        ${Number(cn.refund_amount) ? `<span>رُدّ للعميل (${esc(METHODS[cn.refund_method] || '')})</span><span class="num">${money(cn.refund_amount)}</span>` : ''}
+      </div>
+      <div class="words"><strong>المبلغ كتابةً:</strong> ${esc(amountWords(cn.total))}</div>
+      <div class="sign"><div>توقيع العميل</div><div>الختم والتوقيع</div></div>
+      <footer class="doc-foot"><span>${esc(g.name)}</span><span class="row" style="gap:6px">بواسطة <img src="assets/logo.svg" alt="EMD Garage"></span></footer>
     </article>` };
   }
 
@@ -147,6 +183,7 @@ export default async function printDoc([id, fmt]) {
         <span>المجموع قبل الضريبة</span><span class="num">${money(t.subtotal)}</span>
         <span>ضريبة القيمة المضافة ${num(isInvoice ? inv.vat_rate : g.vat_rate)}٪</span><span class="num">${money(t.vat)}</span>
         <span class="grand">الإجمالي</span><span class="num grand">${money(t.total)}</span>
+        ${isInvoice && Number(inv.credited) ? `<span>إشعارات دائنة</span><span class="num">− ${money(inv.credited)}</span>` : ''}
         ${isInvoice ? `<span>المدفوع</span><span class="num">${money(inv.paid)}</span><span><strong>المتبقي</strong></span><span class="num"><strong>${money(inv.balance)}</strong></span>` : ''}
       </div>
       <div class="words"><strong>المبلغ كتابةً:</strong> ${esc(amountWords(t.total))}</div>

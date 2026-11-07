@@ -4,7 +4,7 @@ import { icon, toast, field, options, openDialog, busy } from '../ui.js';
 import { ctx } from '../state.js';
 
 const TYPES = { asset: 'الأصول', liability: 'الخصوم', equity: 'حقوق الملكية', revenue: 'الإيرادات', expense: 'المصروفات' };
-const SOURCES = { invoice: 'فاتورة', payment: 'سند قبض', purchase: 'شراء', supplier_payment: 'سداد مورد', expense: 'مصروف', stock: 'مخزون', manual: 'يدوي' };
+const SOURCES = { invoice: 'فاتورة', payment: 'سند قبض', purchase: 'شراء', supplier_payment: 'سداد مورد', expense: 'مصروف', stock: 'مخزون', manual: 'يدوي', credit_note: 'إشعار دائن' };
 const today = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
 const yearStart = () => `${today().slice(0, 4)}-01-01`;
 const valid = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');

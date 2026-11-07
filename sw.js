@@ -1,9 +1,9 @@
 // App-shell cache. Data requests (Supabase) always go to the network.
-const VERSION = 'emd-garage-v11';
+const VERSION = 'emd-garage-v12';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/api.js', 'js/format.js', 'js/ui.js', 'js/state.js',
   'js/views/dashboard.js', 'js/views/board.js', 'js/views/intake.js', 'js/views/job.js', 'js/views/print.js',
   'js/views/customers.js', 'js/views/inventory.js', 'js/views/settings.js', 'js/views/appointments.js',
-  'js/views/purchases.js', 'js/views/expenses.js', 'js/views/reports.js', 'js/views/pricing.js', 'js/views/accounting.js', 'js/views/portal.js', 'js/views/admin.js', 'js/media.js', 'js/i18n.js', 'js/i18n-en.js',
+  'js/views/purchases.js', 'js/views/expenses.js', 'js/views/reports.js', 'js/views/pricing.js', 'js/views/accounting.js', 'js/views/portal.js', 'js/views/admin.js', 'js/media.js', 'js/einvoice.js', 'js/i18n.js', 'js/i18n-en.js',
   'assets/logo.svg', 'assets/logo-on-dark.svg', 'assets/icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

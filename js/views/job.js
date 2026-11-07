@@ -38,12 +38,17 @@ export default async function job([id]) {
     db.get('inspection_items', { job_id: `eq.${id}`, order: 'created_at' }).catch(() => []),
     db.rpc('job_time', { p_job: id }).catch(() => null),
   ]);
-  const payments = inv ? await db.get('payments', { invoice_id: `eq.${inv.id}`, order: 'paid_at' }) : [];
+  const [payments, credits] = inv ? await Promise.all([
+    db.get('payments', { invoice_id: `eq.${inv.id}`, order: 'paid_at' }),
+    db.get('credit_notes', { invoice_id: `eq.${inv.id}`, order: 'issued_at' }).catch(() => []),
+  ]) : [[], []];
   const v = j.vehicles || {}, c = j.customers || {};
   const g = ctx.garage;
   const est = computeTotals(lines, g.vat_rate, inv ? Number(inv.discount) : 0);
-  const stale = inv && payments.length === 0 && Math.abs(est.total - Number(inv.total)) > 0.0005;
-  const locked = payments.length > 0;
+  const stale = inv && payments.length === 0 && !credits.length && Math.abs(est.total - Number(inv.total)) > 0.0005;
+  const locked = payments.length > 0 || credits.length > 0;
+  const canCredit = inv && ctx.can('owner', 'manager', 'accountant');
+  const creditLeft = inv ? round3(Number(inv.subtotal) - credits.reduce((a, x) => a + Number(x.subtotal), 0)) : 0;
 
   // ---- sections ----
   const stepper = `<div class="stepper" role="group" aria-label="مرحلة السيارة">${FLOW.map((s, i) => {
@@ -133,6 +138,7 @@ export default async function job([id]) {
       <span>قبل الضريبة</span><span class="num">${money(t.subtotal)}</span>
       <span>ضريبة القيمة المضافة ${num(g.vat_rate)}٪</span><span class="num">${money(t.vat)}</span>
       <span class="grand">الإجمالي</span><span class="num grand">${money(t.total)}</span>
+      ${t.credited && Number(t.credited) ? `<span>إشعارات دائنة</span><span class="num">− ${money(t.credited)}</span>` : ''}
       ${paid !== undefined ? `<span>المدفوع</span><span class="num">${money(paid)}</span><span><strong>المتبقي</strong></span><span class="num"><strong>${money(balance)}</strong></span>` : ''}
     </div>`;
 
@@ -154,6 +160,12 @@ export default async function job([id]) {
           </div>
           <div><button class="btn teal">سجّل الدفعة</button></div>
         </form>` : ''}
+      ${credits.length ? `<div><h3>الإشعارات الدائنة</h3><div class="list">${credits.map((x) => `<div class="list-item" style="flex-wrap:wrap;row-gap:6px"><span style="flex:1 1 160px">إشعار ${idn(x.credit_no)} · ${esc(x.reason)}<br><span class="subtle">${esc(dateTime(x.issued_at))}${Number(x.refund_amount) ? ` · رُدّ للعميل ${money(x.refund_amount)} ${esc(METHODS[x.refund_method] || '')}` : ''}</span></span>
+          <span class="row" style="gap:6px;flex-wrap:nowrap"><strong>− ${money(x.total)}</strong><a class="btn small ghost" href="#/print/${j.id}/credit/${x.id}" target="_blank" rel="noopener" aria-label="اطبع الإشعار ${idn(x.credit_no)}">${icon('print')}</a><button type="button" class="btn small ghost" data-xml-cn="${x.id}" aria-label="ملف XML للإشعار ${idn(x.credit_no)}">XML</button></span></div>`).join('')}</div></div>` : ''}
+      ${inv ? `<div class="row" style="gap:8px">
+          ${canCredit && creditLeft > 0.0005 ? '<button type="button" class="btn small" id="credit">إشعار دائن</button>' : ''}
+          <button type="button" class="btn small ghost" id="xml-inv" title="ملف الفاتورة الإلكترونية بصيغة UBL لمزوّد فوترة">ملف XML للفوترة</button>
+        </div>` : ''}
       ${payments.length ? `<div><h3>الدفعات</h3><div class="list">${payments.map((p) => `<div class="list-item"><span>سند ${idn(p.receipt_no)} · ${esc(METHODS[p.method])}<br><span class="subtle">${esc(dateTime(p.paid_at))}</span></span><strong>${money(p.amount)}</strong></div>`).join('')}</div></div>` : ''}
       ${j.status === 'ready' && ctx.can('owner', 'manager', 'reception') ? `<button class="btn ${inv && Number(inv.balance) <= 0.0005 ? 'primary' : ''}" data-status="delivered">سلّم السيارة للعميل</button>` : ''}
     </section>`;
@@ -345,6 +357,40 @@ export default async function job([id]) {
           reload();
         });
       });
+
+      el.querySelector('#credit')?.addEventListener('click', () => {
+        const d = openDialog(`إشعار دائن على الفاتورة ${idn(inv.invoice_no)}`, `
+          <p class="muted">الفاتورة الصادرة لا تُعدَّل، ويُخفَّض مبلغها بإشعار دائن يُسجَّل في الحسابات ويظهر في كشف العميل.</p>
+          ${field('المبلغ قبل الضريبة (ر.ع)', `<input name="subtotal" type="number" step="0.001" min="0.001" max="${creditLeft}" inputmode="decimal" required value="${creditLeft.toFixed(3)}">`, { req: true, hint: `أقصى مبلغ ${money(creditLeft)}، وتُضاف إليه الضريبة ${num(inv.vat_rate)}٪` })}
+          ${field('السبب', '<input name="reason" required placeholder="مثال: خصم بعد الإصدار، إرجاع قطعة، خطأ في السعر">', { req: true })}
+          <p id="cn-total" class="subtle"></p>
+          <div id="refund-box" class="stack">
+            ${field('المبلغ المردود للعميل (ر.ع)', '<input name="refund" type="number" step="0.001" min="0" inputmode="decimal" value="0">', { hint: 'إن كان العميل قد دفع أكثر مما عليه بعد الإشعار' })}
+            ${field('طريقة الرد', `<select name="method">${options(Object.entries(METHODS), 'cash')}</select>`)}
+          </div>`, async (v) => {
+          const r = await db.rpc('issue_credit_note', { p_invoice: inv.id, p_subtotal: Number(v.subtotal), p_reason: v.reason, p_refund: Number(v.refund || 0), p_method: v.method });
+          toast(`صدر الإشعار الدائن رقم ${idn(r.credit_no)}`);
+          reload();
+        }, { submitLabel: 'أصدر الإشعار' });
+        const upd = () => {
+          const sub = Number(d.querySelector('[name=subtotal]').value || 0), tot = round3(sub * (1 + Number(inv.vat_rate) / 100));
+          const canRefund = round3(Math.max(0, tot - Number(inv.balance)));
+          d.querySelector('#cn-total').textContent = `إجمالي الإشعار شامل الضريبة ${money(tot)}`;
+          d.querySelector('#refund-box').classList.toggle('hidden', canRefund <= 0.0005);
+          const rf = d.querySelector('[name=refund]'); rf.max = canRefund; if (Number(rf.value) > canRefund) rf.value = canRefund.toFixed(3);
+        };
+        d.querySelector('[name=subtotal]').addEventListener('input', upd); upd();
+      });
+      const download = async (kind, rec) => {
+        const { invoiceXml } = await import('../einvoice.js');
+        const xml = invoiceXml({ kind, garage: g, branch: ctx.allBranches.find((b) => b.id === j.branch_id), customer: c, vehicle: v, invoice: inv, lines: lines.filter((l) => l.approved !== false && !['pending', 'declined'].includes(l.approval_state)), credit: rec });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+        a.download = kind === 'credit' ? `credit-note-${rec.credit_no}.xml` : `invoice-${inv.invoice_no}.xml`;
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      };
+      el.querySelector('#xml-inv')?.addEventListener('click', () => download('invoice'));
+      el.querySelectorAll('[data-xml-cn]').forEach((b) => b.addEventListener('click', () => download('credit', credits.find((x) => x.id === b.dataset.xmlCn))));
 
       el.querySelector('#pay')?.addEventListener('submit', (ev) => {
         ev.preventDefault();
