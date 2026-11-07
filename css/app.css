@@ -52,11 +52,11 @@ bdi.ltr, .ltr { direction: ltr; unicode-bidi: isolate; }
 
 /* ---------- Shell ---------- */
 .shell { min-height: 100vh; display: flex; }
-.side { width: 240px; flex-shrink: 0; background: var(--chrome-bg); color: var(--chrome-ink); display: flex; flex-direction: column; padding: 20px 12px; gap: 4px; position: sticky; top: 0; height: 100vh; }
+.side { width: 240px; flex-shrink: 0; background: var(--chrome-bg); color: var(--chrome-ink); display: flex; flex-direction: column; padding: 20px 12px; gap: 4px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .side .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
 .side .brand img { height: 40px; }
 .side .garage-name { font-size: 13px; color: var(--chrome-muted); padding: 0 8px 12px; border-bottom: 1px solid var(--chrome-raised); margin-bottom: 8px; }
-.nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--r-md); color: var(--chrome-ink); font-weight: 600; font-size: 15px; }
+.nav a { display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 0 12px; border-radius: var(--r-md); color: var(--chrome-ink); font-weight: 600; font-size: 15px; }
 .nav a:hover { background: var(--chrome-raised); text-decoration: none; }
 .nav a[aria-current="page"] { background: var(--chrome-raised); box-shadow: inset -3px 0 0 var(--gold); }
 .nav svg { width: 22px; height: 22px; flex-shrink: 0; }

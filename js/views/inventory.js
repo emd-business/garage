@@ -1,5 +1,5 @@
-import { db, like } from '../api.js';
-import { esc, money, num } from '../format.js';
+import { db } from '../api.js';
+import { esc, money, num, idn, dateTime, date } from '../format.js';
 import { icon, toast, field, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
 
@@ -44,7 +44,7 @@ export default async function inventory() {
       <input id="q" type="search" placeholder="ابحث باسم الصنف أو رمزه" aria-label="بحث في المخزون">
       <section class="card pad-0">${items.length ? `<div class="table-wrap"><table>
         <thead><tr><th>الصنف</th><th>الفئة</th><th>المكان</th><th class="num">الكمية</th><th>الحالة</th>${seeCost ? '<th class="num">التكلفة</th>' : ''}<th class="num">سعر البيع</th>${canEdit ? '<th><span class="hidden">إجراءات</span></th>' : ''}</tr></thead>
-        <tbody>${items.map((it) => `<tr data-name="${esc(`${it.name} ${it.sku || ''}`.toLowerCase())}"><td><strong>${esc(it.name)}</strong>${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}</td>
+        <tbody>${items.map((it) => `<tr data-name="${esc(`${it.name} ${it.sku || ''}`.toLowerCase())}"><td><a href="#/item/${it.id}"><strong>${esc(it.name)}</strong></a>${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}</td>
           <td>${esc(it.category || '')}</td><td>${esc(it.location || '')}</td><td class="num">${num(it.qty)}</td><td>${stockBadge(it)}</td>
           ${seeCost ? `<td class="num">${money(it.unit_cost)}</td>` : ''}<td class="num">${money(it.sell_price)}</td>
           ${canEdit ? `<td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn small" data-adjust="${it.id}">الكمية</button><button class="btn small ghost" data-edit="${it.id}">تعديل</button></div></td>` : ''}</tr>`).join('')}</tbody></table></div>`
@@ -81,5 +81,42 @@ export default async function inventory() {
         });
       }));
     },
+  };
+}
+
+// Item card: every movement, purchases, monthly consumption and days of cover.
+export async function itemView([id]) {
+  const it = await db.one('items', { id: `eq.${id}` });
+  if (!it) throw new Error('الصنف غير موجود');
+  const seeCost = ctx.can('owner', 'manager', 'storekeeper', 'accountant');
+  const [moves, buys] = await Promise.all([
+    db.get('stock_movements', { item_id: `eq.${id}`, order: 'created_at.desc', limit: 200, select: 'qty,reason,created_at,job_id,job_orders(job_no)' }).catch(() => []),
+    seeCost ? db.get('purchase_lines', { item_id: `eq.${id}`, select: 'qty,unit_cost,purchases(purchase_no,purchase_date,suppliers(name))' }).catch(() => []) : [],
+  ]);
+  const since = Date.now() - 90 * 864e5;
+  const used90 = moves.filter((m) => Number(m.qty) < 0 && m.job_id && new Date(m.created_at) >= since).reduce((a, m) => a - Number(m.qty), 0)
+    - moves.filter((m) => Number(m.qty) > 0 && m.job_id && new Date(m.created_at) >= since).reduce((a, m) => a + Number(m.qty), 0);
+  const monthly = Math.max(0, used90) / 3;
+  const cover = monthly > 0 ? Math.floor(Number(it.qty) / (monthly / 30)) : null;
+  return {
+    title: it.name,
+    html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/inventory" class="subtle">المخزون</a><h1>${esc(it.name)}</h1>
+        <p class="muted">${[it.sku && `<bdi class="ltr">${esc(it.sku)}</bdi>`, it.category && esc(it.category), it.location && `المكان: ${esc(it.location)}`].filter(Boolean).join(' · ')}</p></div>${stockBadge(it)}</div>
+      <div class="kpis">
+        <div class="kpi"><span class="label">الكمية الحالية</span><span class="value">${num(it.qty)}</span></div>
+        <div class="kpi"><span class="label">الاستهلاك الشهري</span><span class="value">${num(Math.round(monthly * 10) / 10)}</span></div>
+        <div class="kpi ${cover !== null && cover < 14 ? 'alert' : ''}"><span class="label">يكفي لمدة</span><span class="value">${cover === null ? '—' : `${num(cover)} يوماً`}</span></div>
+        ${seeCost ? `<div class="kpi"><span class="label">متوسط التكلفة</span><span class="value">${money(it.unit_cost)}</span></div>` : ''}
+        <div class="kpi"><span class="label">سعر البيع</span><span class="value">${money(it.sell_price)}</span></div>
+      </div>
+      <div class="grid two">
+        <section class="card"><h2 style="margin-bottom:10px">حركة الصنف</h2>
+          ${moves.length ? `<div class="list">${moves.map((m) => `<div class="list-item"><span>${esc(m.reason)}${m.job_id ? ` · <a href="#/job/${m.job_id}">أمر ${idn(m.job_orders?.job_no)}</a>` : ''}<br><span class="subtle">${esc(dateTime(m.created_at))}</span></span>
+            <strong style="color:${Number(m.qty) < 0 ? 'var(--danger-ink)' : 'var(--success-ink)'}"><bdi>${Number(m.qty) > 0 ? '+' : ''}${num(m.qty)}</bdi></strong></div>`).join('')}</div>` : '<p class="muted">لا توجد حركات.</p>'}
+        </section>
+        ${seeCost ? `<section class="card"><h2 style="margin-bottom:10px">آخر المشتريات</h2>
+          ${buys.length ? `<div class="list">${buys.sort((a, b) => String(b.purchases?.purchase_date).localeCompare(String(a.purchases?.purchase_date))).map((b) => `<div class="list-item"><span>${esc(b.purchases?.suppliers?.name || '')} · شراء ${idn(b.purchases?.purchase_no)}<br><span class="subtle">${esc(date(b.purchases?.purchase_date))}</span></span><span>${num(b.qty)} × ${money(b.unit_cost)}</span></div>`).join('')}</div>` : '<p class="muted">لم يُشترَ هذا الصنف عبر فواتير الشراء بعد.</p>'}
+        </section>` : ''}
+      </div>`,
   };
 }

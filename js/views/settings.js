@@ -48,9 +48,10 @@ export default async function settings() {
       <section class="card pad-0">
         <div class="card-head" style="padding:16px 20px 0"><h2>الفريق</h2><button class="btn small teal" id="invite">${icon('plus')} ادعُ موظفاً</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>الموظف</th><th>الدور</th><th>الحالة</th></tr></thead>
+          <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th><th>الحالة</th></tr></thead>
           <tbody>${ctx.staff.map((s) => `<tr><td>${esc(s.full_name)}${s.user_id === ctx.uid ? ' <span class="subtle">(أنت)</span>' : ''}</td>
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? esc(ROLES[s.role]) : `<select data-role="${s.user_id}" aria-label="دور ${esc(s.full_name)}" style="max-width:180px">${options(roleOpts, s.role)}</select>`}</td>
+            <td>${s.role === 'owner' || s.user_id === ctx.uid ? '—' : `<input type="number" min="0" max="100" step="0.5" value="${esc(s.commission_pct ?? 0)}" data-comm="${s.user_id}" aria-label="عمولة ${esc(s.full_name)}" style="max-width:90px">`}</td>
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? '<span class="badge success">نشط</span>' : `<button class="btn small ${s.active ? 'ghost' : 'teal'}" data-active="${s.user_id}" data-to="${!s.active}">${s.active ? 'أوقف' : 'فعّل'}</button>`}</td></tr>`).join('')}</tbody>
         </table></div>
         ${invites.length ? `<div style="padding:12px 20px 20px"><h3>دعوات لم تُستخدم</h3><div class="list">${invites.map((i) => `<div class="list-item">
@@ -103,6 +104,10 @@ export default async function settings() {
       el.querySelectorAll('[data-role]').forEach((s) => s.addEventListener('change', () => busy(s, async () => {
         await db.update('memberships', { garage_id: `eq.${g.id}`, user_id: `eq.${s.dataset.role}` }, { role: s.value });
         toast('تغيّر الدور'); ctx.staff = await db.rpc('garage_staff');
+      })));
+      el.querySelectorAll('[data-comm]').forEach((i) => i.addEventListener('change', () => busy(i, async () => {
+        await db.update('memberships', { garage_id: `eq.${g.id}`, user_id: `eq.${i.dataset.comm}` }, { commission_pct: Number(i.value || 0) });
+        toast('حُفظت العمولة'); ctx.staff = await db.rpc('garage_staff');
       })));
       el.querySelectorAll('[data-active]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
         await db.update('memberships', { garage_id: `eq.${g.id}`, user_id: `eq.${b.dataset.active}` }, { active: b.dataset.to === 'true' });

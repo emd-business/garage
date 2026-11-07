@@ -13,9 +13,11 @@ export function plateTag(v) {
 export const isLate = (j) => j.promised_at && !['ready', 'delivered', 'cancelled'].includes(j.status) && new Date(j.promised_at) < new Date();
 
 export default async function dashboard() {
-  const [k, jobs] = await Promise.all([
+  const dayStart = new Date(`${new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10)}T00:00:00+04:00`);
+  const [k, jobs, appts] = await Promise.all([
     db.rpc('dashboard_today'),
     db.get('job_orders', { select: JOB_SELECT, status: 'not.in.(delivered,cancelled)', order: 'promised_at.asc.nullslast', limit: 50 }),
+    ctx.can('owner', 'manager', 'reception') ? db.get('appointments', { select: 'id', status: 'in.(booked,confirmed)', starts_at: `gte.${dayStart.toISOString()}`, and: `(starts_at.lt.${new Date(dayStart.getTime() + 864e5).toISOString()})` }).catch(() => []) : [],
   ]);
   const by = (k && k.by_status) || {};
   const inShop = Object.values(by).reduce((a, b) => a + Number(b), 0);
@@ -42,6 +44,7 @@ export default async function dashboard() {
       ${tile('متأخرة عن الموعد', num(k?.overdue || 0), '#/board', (k?.overdue || 0) > 0)}
       ${tile('جاهزة للتسليم', num(by.ready || 0), '#/board')}
       ${tile('استُلمت اليوم', num(k?.received_today || 0), '#/board')}
+      ${ctx.can('owner', 'manager', 'reception') ? tile('مواعيد اليوم', num(appts.length), '#/appointments') : ''}
       ${tile('المحصَّل اليوم', money(k?.collected_today || 0), '#/')}
       ${tile('على العملاء', money(k?.receivables || 0), '#/customers')}
       ${tile('أصناف ناقصة', num(k?.low_stock || 0), '#/inventory', (k?.low_stock || 0) > 0)}

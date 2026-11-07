@@ -10,7 +10,12 @@ import intake from './views/intake.js';
 import job from './views/job.js';
 import printDoc from './views/print.js';
 import customers, { customerView } from './views/customers.js';
-import inventory from './views/inventory.js';
+import inventory, { itemView } from './views/inventory.js';
+import appointments from './views/appointments.js';
+import purchases from './views/purchases.js';
+import expenses from './views/expenses.js';
+import reports from './views/reports.js';
+import pricing from './views/pricing.js';
 import settings from './views/settings.js';
 
 const root = document.getElementById('app');
@@ -19,13 +24,19 @@ const NAV = [
   { href: '#/', key: '', label: 'اليوم', icon: 'home', roles: ['owner', 'manager', 'reception', 'accountant'] },
   { href: '#/board', key: 'board', label: 'الورشة', icon: 'board', roles: ['owner', 'manager', 'reception', 'accountant', 'technician'] },
   { href: '#/intake', key: 'intake', label: 'استلام', icon: 'intake', roles: ['owner', 'manager', 'reception'] },
+  { href: '#/appointments', key: 'appointments', label: 'المواعيد', icon: 'calendar', roles: ['owner', 'manager', 'reception'] },
   { href: '#/customers', key: 'customers', label: 'العملاء', icon: 'users', roles: ['owner', 'manager', 'reception', 'accountant'] },
   { href: '#/inventory', key: 'inventory', label: 'المخزون', icon: 'box', roles: ['owner', 'manager', 'reception', 'accountant', 'storekeeper'] },
+  { href: '#/purchases', key: 'purchases', label: 'المشتريات', icon: 'cart', roles: ['owner', 'manager', 'accountant', 'storekeeper'] },
+  { href: '#/expenses', key: 'expenses', label: 'المصروفات', icon: 'receipt', roles: ['owner', 'manager', 'accountant'] },
+  { href: '#/reports', key: 'reports', label: 'التقارير', icon: 'chart', roles: ['owner', 'manager', 'accountant'] },
+  { href: '#/pricing', key: 'pricing', label: 'التسعير', icon: 'calc', roles: ['owner', 'manager'] },
   { href: '#/settings', key: 'settings', label: 'الإعدادات', icon: 'settings', roles: ['owner', 'manager'] },
 ];
 
 const ROUTES = {
-  '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, settings,
+  '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, item: itemView, settings,
+  appointments, purchases, expenses, reports, pricing, more: moreView,
 };
 
 function parseRoute() {
@@ -61,7 +72,7 @@ function shell(activeKey) {
         <button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button>
       </header>
       <main class="content" id="view" tabindex="-1"><div class="skeleton"></div></main>
-      <nav class="bottomnav" aria-label="القائمة">${items.slice(0, 5).map((n) => link(n)).join('')}</nav>
+      <nav class="bottomnav" aria-label="القائمة">${(items.length > 5 ? items.slice(0, 4) : items).map((n) => link(n)).join('')}${items.length > 5 ? `<a href="#/more" ${activeKey === 'more' || !items.slice(0, 4).some((n) => n.key === activeKey) ? 'aria-current="page"' : ''}>${icon('more')}<span>المزيد</span></a>` : ''}</nav>
     </div>
   </div>`;
 }
@@ -72,7 +83,8 @@ async function route() {
   if (!ctx.garage || !ctx.role) return renderOnboarding();
   const { key, params } = parseRoute();
   const view = ROUTES[key];
-  const allowed = key === 'print' || key === 'job' || key === 'customer' || NAV.find((n) => n.key === key)?.roles.includes(ctx.role);
+  const navKey = { item: 'inventory', customer: 'customers' }[key] || key;
+  const allowed = key === 'print' || key === 'job' || key === 'more' || NAV.find((n) => n.key === navKey)?.roles.includes(ctx.role);
   if (!view || !allowed) { location.hash = `#/${homeFor(ctx.role)}`; return; }
   const seq = ++renderSeq;
 
@@ -87,7 +99,7 @@ async function route() {
     return;
   }
 
-  const activeKey = key === 'job' ? 'board' : key === 'customer' ? 'customers' : key;
+  const activeKey = key === 'job' ? 'board' : navKey;
   if (!document.querySelector('.shell') || root.dataset.active !== activeKey) {
     root.innerHTML = shell(activeKey);
     root.dataset.active = activeKey;
@@ -108,6 +120,17 @@ async function route() {
 }
 
 export function rerender() { delete root.dataset.active; route(); }
+
+// Phone-size menu with every section the role can open
+async function moreView() {
+  const items = NAV.filter((n) => n.roles.includes(ctx.role));
+  return {
+    title: 'المزيد',
+    html: `<div class="page-head"><div><h1>القائمة</h1><p class="lead">${esc(ctx.garage.name)} · ${esc(ROLES[ctx.role])}</p></div></div>
+      <section class="card"><div class="list">${items.map((n) => `<a class="list-item" href="${n.href}"><span class="row" style="gap:12px">${icon(n.icon).replace('<svg', '<svg style="width:22px;height:22px"')} ${esc(n.label)}</span>${icon('arrow').replace('<svg', '<svg style="width:18px;height:18px"')}</a>`).join('')}
+        <button type="button" class="list-item" data-signout style="width:100%;border:0;background:none;font:inherit;color:var(--danger-ink);cursor:pointer;min-height:48px">${esc('تسجيل الخروج')}</button></div></section>`,
+  };
+}
 
 // ---------- Auth ----------
 function renderAuth(mode = 'in', note = '') {
