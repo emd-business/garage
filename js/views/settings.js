@@ -2,6 +2,7 @@ import { db } from '../api.js';
 import { esc, money, num, ROLES, dateTime, waLink } from '../format.js';
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
 import { ctx, refreshGarage } from '../state.js';
+import { uploadImage } from '../media.js';
 
 export default async function settings() {
   const g = ctx.garage;
@@ -28,7 +29,13 @@ export default async function settings() {
           ${field('الرقم الضريبي', `<input name="vat_number" dir="ltr" value="${esc(g.vat_number || '')}">`, { hint: 'يظهر على الفاتورة الضريبية' })}
           ${field('نسبة الضريبة ٪', `<input name="vat_rate" type="number" step="0.01" min="0" max="100" value="${esc(g.vat_rate)}">`)}
           ${field('سعر ساعة العمل (ر.ع)', `<input name="labor_rate" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(g.labor_rate)}">`, { hint: 'يُستخدم للخدمات التي ليس لها سعر ثابت' })}
-          ${field('رابط شعار الكراج', `<input name="logo_url" type="url" dir="ltr" placeholder="https://" value="${esc(g.logo_url || '')}">`, { hint: 'اختياري. رفع الشعار مباشرة قادم قريباً', cls: 'span-all' })}
+          <div class="span-all row" style="gap:16px;align-items:center">
+            ${g.logo_url ? `<img src="${esc(g.logo_url)}" alt="شعار الكراج" style="height:64px;width:64px;object-fit:contain;border:1px solid var(--border);border-radius:10px;background:#fff">` : ''}
+            <label class="btn small" style="cursor:pointer">${g.logo_url ? 'غيّر الشعار' : 'ارفع شعار الكراج'}<input type="file" id="logo-file" accept="image/*" class="hidden"></label>
+            ${g.logo_url ? '<button type="button" class="btn small ghost" id="logo-rm">احذف الشعار</button>' : ''}
+            <span class="subtle">يظهر على الفواتير ورابط العميل</span>
+          </div>
+          ${field('بيانات التحويل البنكي', `<textarea name="bank_details" placeholder="اسم البنك، اسم الحساب، رقم الحساب أو IBAN">${esc(g.bank_details || '')}</textarea>`, { hint: 'تظهر للعميل في رابط المتابعة عند وجود مبلغ مستحق', cls: 'span-all' })}
         </div>
         <div><button class="btn primary">احفظ البيانات</button></div>
       </form>
@@ -37,9 +44,10 @@ export default async function settings() {
         <div class="card-head" style="padding:16px 20px 0"><h2>الخدمات والأسعار</h2><button class="btn small" id="add-svc">${icon('plus')} خدمة</button></div>
         <p class="subtle" style="padding:0 20px">إن تركت السعر صفراً يُحسب من الساعات × سعر ساعة العمل (${money(g.labor_rate)}).</p>
         <div class="table-wrap"><table>
-          <thead><tr><th>الخدمة</th><th class="num">الساعات المعيارية</th><th class="num">السعر</th><th>الحالة</th><th><span class="hidden">تعديل</span></th></tr></thead>
+          <thead><tr><th>الخدمة</th><th class="num">الساعات المعيارية</th><th class="num">السعر</th><th class="num">الضمان</th><th>الحالة</th><th><span class="hidden">تعديل</span></th></tr></thead>
           <tbody>${services.map((s) => `<tr><td>${esc(s.name)}</td><td class="num">${num(s.std_hours)}</td>
             <td class="num">${Number(s.price) > 0 ? money(s.price) : `<span class="subtle">${money(Number(s.std_hours) * Number(g.labor_rate))}</span>`}</td>
+            <td class="num">${Number(s.warranty_days) ? `${num(s.warranty_days)} يوماً` : '—'}</td>
             <td>${s.active ? '<span class="badge success">مفعّلة</span>' : '<span class="badge neutral">موقوفة</span>'}</td>
             <td><button class="btn small ghost" data-svc="${s.id}">تعديل</button></td></tr>`).join('')}</tbody>
         </table></div>
@@ -72,14 +80,27 @@ export default async function settings() {
         });
       });
 
+      el.querySelector('#logo-file').addEventListener('change', async (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        toast('جارٍ رفع الشعار…');
+        try {
+          const url = await uploadImage(f, 'logo');
+          await db.update('garages', { id: `eq.${g.id}` }, { logo_url: url });
+          await refreshGarage(); toast('حُفظ الشعار'); reload();
+        } catch (err) { toast(err.message, 'error'); }
+      });
+      el.querySelector('#logo-rm')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await db.update('garages', { id: `eq.${g.id}` }, { logo_url: null }); await refreshGarage(); reload();
+      }));
       const svcDialog = (s = {}) => openDialog(s.id ? 'تعديل خدمة' : 'خدمة جديدة', `
         ${field('اسم الخدمة', `<input name="name" required value="${esc(s.name || '')}">`, { req: true })}
         <div class="grid form" style="grid-template-columns:1fr 1fr">
           ${field('الساعات المعيارية', `<input name="std_hours" type="number" step="0.25" min="0" value="${esc(s.std_hours ?? 1)}">`)}
           ${field('السعر الثابت (ر.ع)', `<input name="price" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(s.price ?? 0)}">`)}
+          ${field('الضمان (يوم)', `<input name="warranty_days" type="number" step="1" min="0" inputmode="numeric" value="${esc(s.warranty_days ?? 0)}">`)}
         </div>
         ${s.id ? `<label class="row" style="gap:8px"><input type="checkbox" name="active" value="1" ${s.active ? 'checked' : ''} style="width:auto;min-height:0"> مفعّلة</label>` : ''}`, async (d) => {
-        const row = { name: d.name, std_hours: Number(d.std_hours || 0), price: Number(d.price || 0) };
+        const row = { name: d.name, std_hours: Number(d.std_hours || 0), price: Number(d.price || 0), warranty_days: Number(d.warranty_days || 0) };
         if (s.id) await db.update('services', { id: `eq.${s.id}` }, { ...row, active: !!d.active });
         else await db.insert('services', row);
         toast('حُفظت الخدمة'); reload();

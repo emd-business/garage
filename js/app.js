@@ -17,6 +17,7 @@ import expenses from './views/expenses.js';
 import reports from './views/reports.js';
 import pricing from './views/pricing.js';
 import accounting, { ledger, statement } from './views/accounting.js';
+import portal from './views/portal.js';
 import settings from './views/settings.js';
 
 const root = document.getElementById('app');
@@ -80,7 +81,20 @@ function shell(activeKey) {
 }
 
 let renderSeq = 0;
+async function renderPortal(params) {
+  delete root.dataset.active;
+  root.innerHTML = '<div class="skeleton" style="margin:24px"></div>';
+  try {
+    const out = await portal(params);
+    root.innerHTML = out.html;
+    out.bind && out.bind(root);
+  } catch (e) { root.innerHTML = `<div class="content"><div class="notice error">${esc(errMsg(e))}</div></div>`; }
+  window.scrollTo(0, 0);
+}
+
 async function route() {
+  const r0 = parseRoute();
+  if (r0.key === 't') return renderPortal(r0.params);
   if (!auth.session) return renderAuth();
   if (!ctx.garage || !ctx.role) return renderOnboarding();
   const { key, params } = parseRoute();
@@ -276,6 +290,7 @@ window.addEventListener('hashchange', route);
     const r = await auth.fromUrl();
     if (r && r.type === 'recovery') return renderAuth('reset');
   } catch (e) { toast(errMsg(e), 'error'); }
+  if (parseRoute().key === 't') return route();
   if (!auth.session) return renderAuth();
   start();
 })();

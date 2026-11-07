@@ -27,7 +27,8 @@ const bars = (rows, label, value, fmt = money) => {
 export default async function reports([from, to]) {
   const valid = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
   const [f, t] = valid(from) && valid(to) ? [from, to] : preset('month');
-  const r = await db.rpc('report_summary', { p_from: f, p_to: t });
+  const [r, actual] = await Promise.all([db.rpc('report_summary', { p_from: f, p_to: t }), db.rpc('tech_time', { p_from: f, p_to: t }).catch(() => [])]);
+  const actualBy = Object.fromEntries((actual || []).map((x) => [x.name, Number(x.hours)]));
   const gross = round3(Number(r.revenue) - Number(r.cogs));
   const net = round3(gross - Number(r.expenses));
   const vatNet = round3(Number(r.vat_out) - Number(r.vat_in));
@@ -79,8 +80,10 @@ export default async function reports([from, to]) {
         </section>
 
         <section class="card"><h2 style="margin-bottom:12px">أداء الفنيين</h2>
-          ${r.technicians.length ? `<div class="table-wrap"><table><thead><tr><th>الفني</th><th class="num">السيارات</th><th class="num">الساعات</th><th class="num">العمالة</th><th class="num">العمولة</th></tr></thead>
-          <tbody>${r.technicians.map((x) => `<tr><td>${esc(x.name === '—' ? 'غير محدد' : x.name)}</td><td class="num">${num(x.jobs)}</td><td class="num">${num(x.hours)}</td><td class="num">${money(x.amount)}</td><td class="num">${money(x.commission)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد أعمال مفوترة في الفترة.</p>'}
+          <p class="subtle" style="margin-bottom:8px">الكفاءة = الساعات المباعة ÷ الساعات الفعلية المسجّلة بزر «ابدأ العمل».</p>
+          ${r.technicians.length ? `<div class="table-wrap"><table><thead><tr><th>الفني</th><th class="num">السيارات</th><th class="num">الساعات المباعة</th><th class="num">الساعات الفعلية</th><th class="num">الكفاءة</th><th class="num">العمالة</th><th class="num">العمولة</th></tr></thead>
+          <tbody>${r.technicians.map((x) => `<tr><td>${esc(x.name === '—' ? 'غير محدد' : x.name)}</td><td class="num">${num(x.jobs)}</td><td class="num">${num(x.hours)}</td><td class="num">${actualBy[x.name] ? num(Math.round(actualBy[x.name] * 10) / 10) : '—'}</td>
+            <td class="num">${actualBy[x.name] ? `<span class="badge ${x.hours / actualBy[x.name] >= 1 ? 'success' : 'warning'}">${num(Math.round((x.hours / actualBy[x.name]) * 100))}٪</span>` : '—'}</td><td class="num">${money(x.amount)}</td><td class="num">${money(x.commission)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">لا توجد أعمال مفوترة في الفترة.</p>'}
         </section>
         <section class="card"><h2 style="margin-bottom:12px">الشركات المصنعة الأكثر دخلاً</h2>
           ${r.by_make.length ? bars(r.by_make.map((x) => ({ ...x, label: `${x.make} · ${num(x.jobs)} سيارة` })), 'label', 'amount') : '<p class="muted">—</p>'}

@@ -3,11 +3,18 @@ import { idn, esc, money, num, round3, badge, STATUS, FLOW, METHODS, carName, pl
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
 import { plateTag, isLate } from './dashboard.js';
+import { uploadMany, photoGrid, photoPicker } from '../media.js';
+
+const APPROVAL = { pending: ['بانتظار العميل', 'warning'], approved: ['وافق العميل', 'success'], declined: ['رفضه العميل', 'danger'] };
+const CONDITION = { good: ['سليم', 'success'], attention: ['يحتاج انتباه', 'warning'], urgent: ['عاجل', 'danger'] };
+const AREAS = ['الفرامل الأمامية', 'الفرامل الخلفية', 'الإطارات', 'زيت المحرك', 'سائل التبريد', 'البطارية', 'المساعدات', 'الأضواء', 'المكيف', 'ناقل الحركة', 'العادم', 'هيكل السيارة'];
+export const portalUrl = (token) => `${location.origin}${location.pathname}#/t/${token}`;
+const fmtMin = (m) => { m = Math.max(0, Math.round(Number(m) || 0)); const h = Math.floor(m / 60); return h ? `${num(h)} س ${num(m % 60)} د` : `${num(m)} دقيقة`; };
 
 const TECH_CAN = ['inspection', 'repair', 'qc', 'ready'];
 
 export function computeTotals(lines, vatRate, discount = 0) {
-  const sum = (t) => round3(lines.filter((l) => l.type === t && l.approved !== false).reduce((a, l) => a + Number(l.qty) * Number(l.unit_price), 0));
+  const sum = (t) => round3(lines.filter((l) => l.type === t && l.approved !== false && !['pending', 'declined'].includes(l.approval_state)).reduce((a, l) => a + Number(l.qty) * Number(l.unit_price), 0));
   const labor = sum('labor'), parts = sum('part');
   const subtotal = round3(labor + parts - discount);
   const vat = round3((subtotal * Number(vatRate)) / 100);
@@ -20,11 +27,15 @@ export default async function job([id]) {
   const j = await db.one('job_orders', { id: `eq.${id}`, select: '*,vehicles(*),customers(*)' });
   if (!j) throw new Error('أمر العمل غير موجود أو ليس لديك صلاحية عليه');
 
-  const [lines, services, items, inv] = await Promise.all([
+  const canInspect = ctx.can('owner', 'manager', 'reception') || j.technician_id === ctx.uid;
+  const canTime = ctx.can('owner', 'manager') || j.technician_id === ctx.uid;
+  const [lines, services, items, inv, inspection, time] = await Promise.all([
     office ? db.get('job_lines', { job_id: `eq.${id}`, order: 'created_at' }) : db.rpc('job_lines_for_tech', { p_job: id }),
     editLines ? db.get('services', { active: 'eq.true', order: 'name' }) : [],
     editLines ? db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,sell_price,unit_cost' }) : [],
     office ? db.one('invoice_balances', { job_id: `eq.${id}` }) : null,
+    db.get('inspection_items', { job_id: `eq.${id}`, order: 'created_at' }).catch(() => []),
+    db.rpc('job_time', { p_job: id }).catch(() => null),
   ]);
   const payments = inv ? await db.get('payments', { invoice_id: `eq.${inv.id}`, order: 'paid_at' }) : [];
   const v = j.vehicles || {}, c = j.customers || {};
@@ -42,8 +53,11 @@ export default async function job([id]) {
 
   const lineRow = (l) => `<tr>
       <td><span class="badge ${l.type === 'part' ? 'info' : 'neutral'}">${l.type === 'part' ? 'قطعة' : 'عمالة'}</span></td>
-      <td>${esc(l.description)}${l.technician_id && ctx.staffName(l.technician_id) ? `<br><span class="subtle">${esc(ctx.staffName(l.technician_id))}</span>` : ''}</td>
-      <td class="num">${num(l.qty)}</td>
+      <td>${esc(l.description)}${l.technician_id && ctx.staffName(l.technician_id) ? `<br><span class="subtle">${esc(ctx.staffName(l.technician_id))}</span>` : ''}
+        ${APPROVAL[l.approval_state] ? ` <span class="badge ${APPROVAL[l.approval_state][1]}">${APPROVAL[l.approval_state][0]}</span>` : ''}
+        ${Number(l.warranty_days) ? ` <span class="subtle">· ضمان ${num(l.warranty_days)} يوماً</span>` : ''}
+        ${editLines && !locked && l.approval_state === 'pending' ? `<br><span class="row" style="gap:6px;margin-top:4px"><button class="btn small ghost" data-decide="${l.id}" data-to="approved">وافق هاتفياً</button><button class="btn small ghost" data-decide="${l.id}" data-to="declined">رفض</button></span>` : ''}</td>
+      <td class="num" style="${l.approval_state === 'declined' ? 'text-decoration:line-through;color:var(--ink-subtle)' : ''}">${num(l.qty)}</td>
       ${office ? `<td class="num">${money(l.unit_price)}</td><td class="num">${money(Number(l.qty) * Number(l.unit_price))}</td>` : ''}
       ${editLines && !locked ? `<td><button class="btn small ghost icon-btn" data-del-line="${l.id}" aria-label="احذف البند">${icon('trash')}</button></td>` : ''}
     </tr>`;
@@ -57,6 +71,40 @@ export default async function job([id]) {
         <tbody>${lines.map(lineRow).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لم تُضف أعمال أو قطع بعد.</p></div>'}
     </section>`;
+
+  const inspectionCard = `<section class="card stack">
+      <div class="card-head" style="margin:0"><h2>الفحص الرقمي</h2>${canInspect && !['delivered', 'cancelled'].includes(j.status) ? `<button class="btn small" id="add-insp">${icon('plus')} ملاحظة فحص</button>` : ''}</div>
+      ${inspection.length ? `<div class="list">${inspection.map((it) => `<div class="list-item" style="align-items:flex-start">
+          <div class="stack" style="gap:6px;min-width:0"><span><span class="badge ${CONDITION[it.condition][1]}">${CONDITION[it.condition][0]}</span> <strong>${esc(it.area)}</strong></span>
+            ${it.note ? `<span>${esc(it.note)}</span>` : ''}${photoGrid(it.photos)}</div>
+          ${canInspect ? `<button class="btn small ghost icon-btn" data-del-insp="${it.id}" aria-label="احذف الملاحظة">${icon('trash')}</button>` : ''}</div>`).join('')}</div>`
+    : '<p class="muted">لا توجد ملاحظات فحص. صوّر ما يجده الفني، فيراه العميل في رابط المتابعة.</p>'}
+    </section>`;
+
+  const photosCard = `<section class="card stack">
+      <div class="card-head" style="margin:0"><h2>صور الاستلام</h2>${ctx.can('owner', 'manager', 'reception') ? photoPicker('job-photos', 'صوّر') : ''}</div>
+      ${(j.photos || []).length ? photoGrid(j.photos, { removable: ctx.can('owner', 'manager', 'reception') }) : '<p class="muted">لا توجد صور. صوّر السيارة من الجهات الأربع عند استلامها.</p>'}
+    </section>`;
+
+  const timerCard = canTime && !['delivered', 'cancelled'].includes(j.status) || (time && time.total_min > 0) ? `<section class="card stack">
+      <h2>وقت العمل</h2>
+      <p>الوقت المسجّل: <strong>${fmtMin(time?.total_min)}</strong>${time?.mine_running ? ` · <span class="badge success">يعمل منذ ${esc(dateTime(time.running_since))}</span>` : ''}</p>
+      ${(time?.by_user || []).length > 1 ? `<p class="subtle">${time.by_user.map((u) => `${esc(u.name)}: ${fmtMin(u.min)}`).join(' · ')}</p>` : ''}
+      ${canTime && !['delivered', 'cancelled'].includes(j.status) ? `<button class="btn ${time?.mine_running ? 'danger' : 'teal'}" id="timer">${time?.mine_running ? 'أوقف العمل' : 'ابدأ العمل'}</button>` : ''}
+    </section>` : '';
+
+  const pending = lines.filter((l) => l.approval_state === 'pending').length;
+  const linkCard = office && j.public_token ? `<section class="card stack">
+      <h2>رابط العميل</h2>
+      <p class="subtle">يرى منه العميل مرحلة سيارته وصور الفحص والأسعار، ويوافق على البنود أو يرفضها بنفسه.</p>
+      ${pending ? `<div class="notice warn">${num(pending)} بند بانتظار موافقة العميل</div>` : ''}
+      <div class="row">
+        ${editLines && !locked && lines.some((l) => l.approval_state === 'na') && !['delivered', 'cancelled'].includes(j.status) ? `<button class="btn primary" id="req-approval">${icon('wa')} اطلب موافقة العميل</button>` : ''}
+        ${c.phone ? `<a class="btn small wa" target="_blank" rel="noopener" href="${esc(waLink(c.phone, `${c.name ? `مرحباً ${c.name}، ` : ''}تابع سيارتك ${carName(v)} في ${g.name} من هذا الرابط:\n${portalUrl(j.public_token)}`))}">${icon('wa')} أرسل الرابط</a>` : ''}
+        <button class="btn small" id="copy-link">انسخ الرابط</button>
+        <a class="btn small ghost" href="#/t/${esc(j.public_token)}" target="_blank" rel="noopener">معاينة</a>
+      </div>
+    </section>` : '';
 
   const notesCard = `<form class="card stack" id="notes" novalidate>
       <h2>التشخيص والملاحظات</h2>
@@ -141,17 +189,68 @@ export default async function job([id]) {
     html: `<div class="page-head">
         <div class="stack" style="gap:6px">
           <a href="#/board" class="subtle">${icon('back').replace('<svg', '<svg style="width:14px;height:14px;vertical-align:-2px"')} لوحة الورشة</a>
-          <h1 class="row" style="gap:10px">أمر عمل ${idn(j.job_no)} ${badge(j.status)} ${isLate(j) ? '<span class="badge danger">متأخرة</span>' : ''}</h1>
+          <h1 class="row" style="gap:10px">أمر عمل ${idn(j.job_no)} ${badge(j.status)} ${isLate(j) ? '<span class="badge danger">متأخرة</span>' : ''}${j.comeback_of ? ` <a class="badge warning" href="#/job/${j.comeback_of}">عودة ضمن الضمان</a>` : ''}</h1>
           <p class="row" style="gap:10px">${plateTag(v)} <strong>${esc(carName(v))}</strong>${office ? ` · <a href="#/customer/${c.id}">${esc(c.name || '')}</a> ${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''}` : ''}</p>
         </div>
       </div>
       ${stepper}
       <div class="cols">
-        <div class="stack">${linesCard}${notesCard}${detailsCard}</div>
-        <div class="stack">${invoiceCard}${waCard}${infoCard}</div>
+        <div class="stack">${linesCard}${inspectionCard}${notesCard}${detailsCard}</div>
+        <div class="stack">${invoiceCard}${linkCard}${timerCard}${waCard}${photosCard}${infoCard}</div>
       </div>`,
     bind(el) {
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+      el.querySelectorAll('[data-decide]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
+        await db.update('job_lines', { id: `eq.${b.dataset.decide}` }, { approval_state: b.dataset.to });
+        toast(b.dataset.to === 'approved' ? 'سُجّلت الموافقة' : 'سُجّل الرفض، ولن يدخل البند الفاتورة'); reload();
+      })));
+      el.querySelector('#timer')?.addEventListener('click', (ev) => busy(ev.currentTarget, async () => {
+        const r = await db.rpc('timer_toggle', { p_job: j.id });
+        toast(r.running ? 'بدأ احتساب الوقت' : 'توقف احتساب الوقت'); reload();
+      }));
+      el.querySelector('#req-approval')?.addEventListener('click', (ev) => busy(ev.currentTarget, async () => {
+        const token = await db.rpc('request_approval', { p_job: j.id });
+        const msg = `${c.name ? `مرحباً ${c.name}، ` : ''}انتهينا من فحص سيارتك ${carName(v)} في ${g.name}. راجع ما وجدناه والأسعار، ووافق على ما تريد إصلاحه من هذا الرابط:\n${portalUrl(token)}`;
+        if (c.phone) window.open(waLink(c.phone, msg), '_blank', 'noopener');
+        toast('أُرسل طلب الموافقة'); reload();
+      }));
+      el.querySelector('#copy-link')?.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(portalUrl(j.public_token)); toast('نُسخ الرابط'); } catch { toast(portalUrl(j.public_token)); }
+      });
+      el.querySelector('[name="job-photos"]')?.addEventListener('change', async (ev) => {
+        const files = [...ev.target.files]; if (!files.length) return;
+        toast('جارٍ رفع الصور…');
+        try {
+          const urls = await uploadMany(files, `jobs/${j.id}`);
+          await db.update('job_orders', { id: `eq.${j.id}` }, { photos: [...(j.photos || []), ...urls] });
+          toast(`رُفعت ${num(urls.length)} صورة`); reload();
+        } catch (e) { toast(e.message, 'error'); }
+      });
+      el.querySelectorAll('[data-rm-photo]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
+        const photos = [...(j.photos || [])]; photos.splice(Number(b.dataset.rmPhoto), 1);
+        await db.update('job_orders', { id: `eq.${j.id}` }, { photos }); reload();
+      })));
+      el.querySelectorAll('[data-del-insp]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
+        await db.remove('inspection_items', { id: `eq.${b.dataset.delInsp}` }); reload();
+      })));
+      el.querySelector('#add-insp')?.addEventListener('click', () => {
+        const d = openDialog('ملاحظة فحص', `
+          ${field('الجزء', `<input name="area" list="areas" required>`, { req: true })}
+          <datalist id="areas">${AREAS.map((a) => `<option value="${esc(a)}">`).join('')}</datalist>
+          <fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:600;font-size:14px;margin-bottom:6px">الحالة</legend>
+            <div class="choice">${Object.entries(CONDITION).map(([k, [l]], i) => `<label><input type="radio" name="condition" value="${k}" ${k === 'attention' ? 'checked' : ''}> ${l}</label>`).join('')}</div></fieldset>
+          ${field('ملاحظة الفني', '<textarea name="note" placeholder="مثال: سماكة الفحمات ٢ مم"></textarea>')}
+          <div class="stack" style="gap:8px">${photoPicker('insp-photos', 'صوّر الجزء')}<div id="insp-preview" class="photos"></div></div>`, async (data, form) => {
+          const files = [...(form.querySelector('[name="insp-photos"]').files || [])];
+          const photos = files.length ? await uploadMany(files, `jobs/${j.id}`) : [];
+          await db.insert('inspection_items', { job_id: j.id, area: data.area, condition: data.condition || 'attention', note: data.note, photos });
+          toast('أُضيفت ملاحظة الفحص'); reload();
+        }, { submitLabel: 'أضف' });
+        d.querySelector('[name="insp-photos"]').addEventListener('change', (e) => {
+          d.querySelector('#insp-preview').innerHTML = [...e.target.files].map((f) => `<span class="ph"><img src="${URL.createObjectURL(f)}" alt=""></span>`).join('');
+        });
+      });
 
       el.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
         await db.rpc('set_job_status', { p_job: j.id, p_status: b.dataset.status });

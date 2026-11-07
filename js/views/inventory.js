@@ -17,12 +17,13 @@ const itemFields = (it = {}) => `
   ${field('التكلفة (ر.ع)', `<input name="unit_cost" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(it.unit_cost ?? 0)}">`)}
   ${field('سعر البيع (ر.ع)', `<input name="sell_price" type="number" step="0.001" min="0" inputmode="decimal" required value="${esc(it.sell_price ?? '')}">`, { req: true })}
   ${it.id ? '' : field('الكمية الحالية', '<input name="qty" type="number" step="1" min="0" inputmode="numeric" value="0">')}
+  ${field('الضمان (يوم)', `<input name="warranty_days" type="number" step="1" min="0" inputmode="numeric" value="${esc(it.warranty_days ?? 0)}">`)}
   ${field('حد إعادة الطلب', `<input name="reorder_level" type="number" step="1" min="0" inputmode="numeric" value="${esc(it.reorder_level ?? 0)}">`, { hint: 'ينبّهك النظام عند الوصول إليه' })}
   <datalist id="cats">${['زيوت', 'فلاتر', 'فرامل', 'كهرباء', 'تعليق', 'إطارات', 'تبريد', 'محرك', 'إكسسوارات'].map((c) => `<option value="${c}">`).join('')}</datalist>`;
 
 const toRow = (d) => ({
   name: d.name, sku: d.sku, category: d.category, location: d.location,
-  unit_cost: Number(d.unit_cost || 0), sell_price: Number(d.sell_price || 0), reorder_level: Number(d.reorder_level || 0),
+  unit_cost: Number(d.unit_cost || 0), sell_price: Number(d.sell_price || 0), reorder_level: Number(d.reorder_level || 0), warranty_days: Number(d.warranty_days || 0),
 });
 
 export default async function inventory() {

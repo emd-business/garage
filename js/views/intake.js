@@ -3,6 +3,7 @@ import { idn, esc, num, carName, fromLocalInput, MAKES } from '../format.js';
 import { icon, toast, field, options, formData, busy } from '../ui.js';
 import { ctx } from '../state.js';
 import { plateTag } from './dashboard.js';
+import { uploadMany, photoPicker } from '../media.js';
 
 const CHECKS = ['الإطار الاحتياطي', 'الرافعة والعدة', 'المفتاح الاحتياطي', 'المسجل والشاشة', 'خدوش ظاهرة', 'أغراض شخصية في السيارة'];
 
@@ -55,6 +56,7 @@ export default async function intake() {
         ${v ? `<p class="row">${plateTag(v)} <strong>${esc(carName(v))}</strong> ${v.vin ? `<bdi class="subtle ltr">${esc(v.vin)}</bdi>` : ''}</p>`
     : `<div class="grid form">${vehicleFields()}</div>`}
       </section>
+      <div id="warranty"></div>
       <section class="card stack">
         <h2>الاستلام</h2>
         <div class="grid form">
@@ -63,6 +65,7 @@ export default async function intake() {
           <label class="field"><span>مستوى الوقود</span><span class="fuel"><input name="fuel_level" type="range" min="0" max="100" step="25" value="50" aria-label="مستوى الوقود"><output>٥٠٪</output></span></label>
           ${field('موعد التسليم المتوقع', '<input name="promised_at" type="datetime-local">')}
           ${field('الفني المسؤول', `<select name="technician_id">${options(ctx.technicians.map((s) => [s.user_id, s.full_name]), '', { empty: 'لاحقاً' })}</select>`)}
+          <div class="span-all stack" style="gap:8px"><span style="font-weight:600;font-size:14px">صور السيارة</span>${photoPicker('photos', 'صوّر السيارة')}<div id="intake-preview" class="photos"></div></div>
           <fieldset class="span-all" style="border:0;padding:0;margin:0"><legend style="font-weight:600;font-size:14px;margin-bottom:6px">فحص الاستلام</legend>
             <div class="choice">${CHECKS.map((c2, i) => `<label><input type="checkbox" name="chk_${i}" value="${esc(c2)}"> ${esc(c2)}</label>`).join('')}</div>
           </fieldset>
@@ -84,6 +87,18 @@ export default async function intake() {
         const form = stage.querySelector('#intake-form');
         const range = form.querySelector('[name="fuel_level"]');
         range.addEventListener('input', () => { range.nextElementSibling.value = `${num(range.value)}٪`; });
+        form.querySelector('[name="photos"]').addEventListener('change', (e) => {
+          form.querySelector('#intake-preview').innerHTML = [...e.target.files].map((f) => `<span class="ph"><img src="${URL.createObjectURL(f)}" alt=""></span>`).join('');
+        });
+        if (picked.vehicle) {
+          db.rpc('warranty_check', { p_vehicle: picked.vehicle.id }).then((w) => {
+            if (!w || !w.length) return;
+            stage.querySelector('#warranty').innerHTML = `<section class="card stack" style="border-color:var(--warning-ink)">
+              <h2>هذه السيارة ضمن الضمان</h2>
+              <div class="list">${w.map((x) => `<div class="list-item"><span>${esc(x.description)} · <a href="#/job/${x.job_id}">أمر ${idn(x.job_no)}</a></span><span class="badge warning">حتى ${esc(x.until)}</span></div>`).join('')}</div>
+              <label class="row" style="gap:8px"><input type="checkbox" name="comeback" value="${esc(w[0].job_id)}" style="width:auto;min-height:0"> عادت بنفس المشكلة (عودة ضمن الضمان)</label></section>`;
+          }).catch(() => {});
+        }
         stage.querySelector('#change').addEventListener('click', () => { picked = null; stage.innerHTML = searchHtml; wireSearch(); });
         form.addEventListener('submit', async (ev) => {
           ev.preventDefault();
@@ -97,11 +112,20 @@ export default async function intake() {
             else if (d.odometer) await db.update('vehicles', { id: `eq.${vehicle.id}` }, { odometer: Number(d.odometer) });
             const checklist = {};
             CHECKS.forEach((c2, i) => { checklist[c2] = !!d[`chk_${i}`]; });
+            const files = [...(form.querySelector('[name="photos"]').files || [])];
+            const comeback = stage.querySelector('[name="comeback"]:checked');
             const job = await db.insert('job_orders', {
+              comeback_of: comeback ? comeback.value : null,
               vehicle_id: vehicle.id, customer_id: customer.id, complaint: d.complaint,
               odometer: d.odometer ? Number(d.odometer) : null, fuel_level: Number(d.fuel_level),
               promised_at: fromLocalInput(d.promised_at), technician_id: d.technician_id, checklist,
             });
+            if (files.length) {
+              try {
+                const urls = await uploadMany(files, `jobs/${job.id}`);
+                await db.update('job_orders', { id: `eq.${job.id}` }, { photos: urls });
+              } catch (e) { toast(`فُتح الأمر، لكن تعذّر رفع الصور: ${e.message}`, 'error'); }
+            }
             toast(`فُتح أمر العمل رقم ${idn(job.job_no)}`);
             location.hash = `#/job/${job.id}`;
           });
