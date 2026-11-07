@@ -1,18 +1,35 @@
 {
+  "id": "./",
   "name": "EMD Garage",
   "short_name": "EMD Garage",
-  "description": "نظام متكامل لإدارة الكراجات",
+  "description": "نظام متكامل لإدارة الكراجات: الاستلام، الورشة، الفواتير، المخزون، المحاسبة، ورابط متابعة للعميل.",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0B1E33",
   "theme_color": "#0B1E33",
+  "categories": ["business", "productivity", "finance"],
+  "prefer_related_applications": false,
   "icons": [
     { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "استلام سيارة", "short_name": "استلام", "url": "./#/intake", "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "لوحة الورشة", "short_name": "الورشة", "url": "./#/board", "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "المواعيد", "short_name": "المواعيد", "url": "./#/appointments", "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "screenshots": [
+    { "src": "assets/store/phone-1-today.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow", "label": "ملخص اليوم" },
+    { "src": "assets/store/phone-2-board.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow", "label": "لوحة الورشة" },
+    { "src": "assets/store/phone-3-job.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow", "label": "أمر العمل" },
+    { "src": "assets/store/phone-4-customer-link.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow", "label": "رابط العميل" },
+    { "src": "assets/store/wide-1-today.png", "sizes": "1920x1080", "type": "image/png", "form_factor": "wide", "label": "ملخص اليوم" },
+    { "src": "assets/store/wide-2-board.png", "sizes": "1920x1080", "type": "image/png", "form_factor": "wide", "label": "لوحة الورشة" }
   ]
 }

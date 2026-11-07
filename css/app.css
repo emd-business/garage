@@ -70,7 +70,9 @@ bdi.ltr, .ltr { direction: ltr; unicode-bidi: isolate; }
 .branch-tag { display: inline-block; background: var(--chrome-raised); color: var(--chrome-ink); border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 600; }
 .branch-tag.on-side { margin: 0 8px 10px; align-self: flex-start; }
 .topbar .branch-pick, .topbar .branch-tag { display: block; margin-top: 2px; }
-.topbar .branch-pick select { min-height: 32px; font-size: 13px; max-width: 46vw; }
+.topbar .branch-pick select { min-height: 32px; font-size: 13px; width: 100%; padding: 0 6px; }
+.topbar .garage-name { flex: 1; min-width: 0; }
+@media (max-width: 400px) { .topbar img { height: 28px !important; } .topbar { gap: 8px !important; padding-inline: 12px !important; } .topbar .lang-btn { padding-inline: 8px; } }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar { display: none; }
 .content { padding: 28px 32px 96px; max-width: 1240px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
@@ -159,6 +161,7 @@ tr.click:hover td { background: var(--surface-sunken); }
 
 /* KPI tiles */
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+@media (max-width: 420px) { .kpis { grid-template-columns: 1fr 1fr; gap: 10px; } .kpi { padding: 12px 14px; } .kpi .value { font-size: 22px; } }
 .kpi { background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; color: var(--ink); }
 a.kpi:hover { text-decoration: none; border-color: var(--border-control); }
 .kpi .label { font-size: 13px; color: var(--ink-muted); font-weight: 600; }
