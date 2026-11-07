@@ -1,5 +1,5 @@
 // App-shell cache. Data requests (Supabase) always go to the network.
-const VERSION = 'emd-garage-v1';
+const VERSION = 'emd-garage-v2';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/api.js', 'js/format.js', 'js/ui.js', 'js/state.js',
   'js/views/dashboard.js', 'js/views/board.js', 'js/views/intake.js', 'js/views/job.js', 'js/views/print.js',
   'js/views/customers.js', 'js/views/inventory.js', 'js/views/settings.js',

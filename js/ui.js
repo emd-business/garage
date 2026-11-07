@@ -16,6 +16,8 @@ const P = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.5 10.5 0 0112 5c6.5 0 10 7 10 7a17 17 0 01-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 005.4-1.6"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>',
   out: '<path d="M15 4h4a1 1 0 011 1v14a1 1 0 01-1 1h-4M10 8l-4 4 4 4M6 12h10"/>',
 };
 export const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
@@ -89,3 +91,21 @@ export const field = (label, input, { req = false, hint = '', cls = '' } = {}) =
 export const options = (list, selected, { empty } = {}) =>
   (empty !== undefined ? `<option value="">${esc(empty)}</option>` : '') +
   list.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(selected ?? '') ? 'selected' : ''}>${esc(l)}</option>`).join('');
+
+// Password input with a show/hide button.
+export const passwordInput = (autocomplete, minlength) => `<span class="pass">
+  <input name="password" type="password" required ${minlength ? `minlength="${minlength}"` : ''} autocomplete="${autocomplete}" dir="ltr">
+  <button type="button" class="pass-toggle" data-toggle-pass aria-label="إظهار كلمة المرور" aria-pressed="false">${icon('eye')}</button>
+</span>`;
+
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-toggle-pass]');
+  if (!b) return;
+  const input = b.parentElement.querySelector('input');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  b.setAttribute('aria-pressed', String(show));
+  b.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
+  b.innerHTML = icon(show ? 'eyeOff' : 'eye');
+  input.focus();
+});

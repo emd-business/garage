@@ -1,7 +1,7 @@
 // EMD Garage — app entry: auth, onboarding, shell and hash router.
 import { auth, db } from './api.js';
 import { esc, ROLES } from './format.js';
-import { icon, toast, errMsg, formData, busy, field } from './ui.js';
+import { icon, toast, errMsg, formData, busy, field, passwordInput } from './ui.js';
 import { ctx, loadContext } from './state.js';
 
 import dashboard from './views/dashboard.js';
@@ -116,18 +116,18 @@ function renderAuth(mode = 'in', note = '') {
   const tabs = [['in', 'دخول'], ['up', 'حساب جديد']];
   const body = {
     in: `${field('البريد الإلكتروني', '<input name="email" type="email" required autocomplete="email" dir="ltr">', { req: true })}
-         ${field('كلمة المرور', '<input name="password" type="password" required autocomplete="current-password" dir="ltr">', { req: true })}
+         ${field('كلمة المرور', passwordInput('current-password'), { req: true })}
          <button class="btn primary">ادخل</button>
          <button type="button" class="btn ghost" data-mode="forgot">نسيت كلمة المرور</button>`,
     up: `${field('الاسم الكامل', '<input name="full_name" required autocomplete="name">', { req: true })}
-         ${field('رقم الهاتف', '<input name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr">')}
+         ${field('رقم الهاتف (اختياري)', '<input name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr">')}
          ${field('البريد الإلكتروني', '<input name="email" type="email" required autocomplete="email" dir="ltr">', { req: true })}
-         ${field('كلمة المرور', '<input name="password" type="password" required minlength="8" autocomplete="new-password" dir="ltr">', { req: true, hint: '٨ أحرف على الأقل' })}
+         ${field('كلمة المرور', passwordInput('new-password', 8), { req: true, hint: '٨ أحرف على الأقل' })}
          <button class="btn primary">أنشئ الحساب</button>`,
     forgot: `${field('البريد الإلكتروني', '<input name="email" type="email" required autocomplete="email" dir="ltr">', { req: true })}
          <button class="btn primary">أرسل رابط الاستعادة</button>
          <button type="button" class="btn ghost" data-mode="in">رجوع للدخول</button>`,
-    reset: `${field('كلمة المرور الجديدة', '<input name="password" type="password" required minlength="8" autocomplete="new-password" dir="ltr">', { req: true })}
+    reset: `${field('كلمة المرور الجديدة', passwordInput('new-password', 8), { req: true })}
          <button class="btn primary">احفظ كلمة المرور</button>`,
   };
   root.innerHTML = `<div class="auth">
@@ -192,8 +192,8 @@ function renderOnboarding() {
       <form class="card" id="create" novalidate>
         <h2>أنشئ كراجك</h2>
         ${field('اسم الكراج', '<input name="name" required>', { req: true })}
-        ${field('الاسم بالإنجليزية', '<input name="name_en" dir="ltr">')}
-        ${field('هاتف الكراج', '<input name="phone" type="tel" dir="ltr">')}
+        ${field('الاسم بالإنجليزية (اختياري)', '<input name="name_en" dir="ltr">')}
+        ${field('هاتف الكراج (اختياري)', '<input name="phone" type="tel" dir="ltr">')}
         <button class="btn primary">أنشئ الكراج</button>
       </form>
       <form class="card" id="join" novalidate>
