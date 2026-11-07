@@ -14,7 +14,7 @@ const supplierFields = (s = {}) => `
 export default async function purchases([tab]) {
   const canPay = ctx.can('owner', 'manager', 'accountant');
   const [list, suppliers, items] = await Promise.all([
-    db.get('purchases', { select: '*,suppliers(name)', order: 'purchase_date.desc,purchase_no.desc', limit: 100 }),
+    db.get('purchases', { ...ctx.here, select: '*,suppliers(name)', order: 'purchase_date.desc,purchase_no.desc', limit: 100 }),
     db.get('supplier_balances', { order: 'name' }),
     db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,unit_cost' }),
   ]);

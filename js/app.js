@@ -3,7 +3,7 @@ import { LOCALE, langButton } from './i18n.js';
 import { auth, db } from './api.js';
 import { esc, ROLES } from './format.js';
 import { icon, toast, errMsg, formData, busy, field, passwordInput } from './ui.js';
-import { ctx, loadContext } from './state.js';
+import { ctx, loadContext, switchBranch } from './state.js';
 
 import dashboard from './views/dashboard.js';
 import board from './views/board.js';
@@ -62,10 +62,14 @@ function shell(activeKey) {
   const link = (n, cls = '') => `<a href="${n.href}" class="${cls}" ${n.key === activeKey ? 'aria-current="page"' : ''}>${icon(n.icon)}<span>${esc(n.label)}</span></a>`;
   const left = ctx.garage.trial_ends_at ? Math.ceil((new Date(ctx.garage.trial_ends_at) - Date.now()) / 864e5) : null;
   const trial = ctx.garage.status === 'trial' ? `<div class="notice ${left !== null && left <= 7 ? 'warn' : 'info'}">${left === null ? 'نسخة تجريبية' : left > 0 ? `التجربة تنتهي بعد ${new Intl.NumberFormat(LOCALE).format(left)} يوماً` : 'انتهت الفترة التجريبية'}</div>` : '';
+  const branchSel = (cls) => !ctx.multiBranch ? '' : ctx.branchLocked
+    ? `<span class="branch-tag ${cls}">${esc(ctx.branch?.name || '')}</span>`
+    : `<label class="branch-pick ${cls}"><span class="sr-only">الفرع</span><select data-branch aria-label="الفرع">${ctx.branches.map((b) => `<option value="${b.id}" ${b.id === ctx.branch?.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></label>`;
   return `<div class="shell">
     <aside class="side" aria-label="القائمة الرئيسية">
       <div class="brand"><img src="assets/logo-on-dark.svg" alt="EMD Garage"></div>
       <div class="garage-name">${esc(ctx.garage.name)}</div>
+      ${branchSel('on-side')}
       <nav class="nav">${items.map((n) => link(n)).join('')}</nav>
       <div class="foot">
         ${trial}
@@ -77,7 +81,7 @@ function shell(activeKey) {
     <div class="main">
       <header class="topbar">
         <img src="assets/logo-on-dark.svg" alt="EMD Garage">
-        <span class="garage-name">${esc(ctx.garage.name)}</span>
+        <span class="garage-name">${esc(ctx.garage.name)}${branchSel('on-top')}</span>
         <span class="row" style="gap:4px;flex-wrap:nowrap">${langButton('btn small ghost lang-btn')}<button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button></span>
       </header>
       <main class="content" id="view" tabindex="-1"><div class="skeleton"></div></main>
@@ -291,6 +295,17 @@ async function start(hash) {
   if (hash && location.hash !== hash) { location.hash = hash; return; }
   route();
 }
+
+document.addEventListener('change', async (ev) => {
+  const sel = ev.target.closest('[data-branch]');
+  if (!sel) return;
+  sel.disabled = true;
+  try {
+    await switchBranch(sel.value);
+    toast(`تعمل الآن في ${ctx.branch.name}`);
+    rerender();
+  } catch (e) { toast(errMsg(e), 'error'); sel.disabled = false; }
+});
 
 document.addEventListener('click', async (ev) => {
   if (ev.target.closest('[data-signout]')) {

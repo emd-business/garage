@@ -13,7 +13,7 @@ function nextStatus(s) {
 }
 
 export default async function board() {
-  const params = { select: JOB_SELECT, status: 'not.in.(delivered,cancelled)', order: 'received_at.asc' };
+  const params = { select: JOB_SELECT, status: 'not.in.(delivered,cancelled)', order: 'received_at.asc', ...ctx.here };
   if (ctx.isTech) params.technician_id = `eq.${ctx.uid}`;
   const jobs = await db.get('job_orders', params);
 

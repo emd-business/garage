@@ -1,6 +1,7 @@
 import { db } from '../api.js';
 import { esc, money, num, idn, date, round3, METHODS } from '../format.js';
 import { icon, toast, busy } from '../ui.js';
+import { ctx } from '../state.js';
 
 const today = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
 function preset(key) {
@@ -24,10 +25,12 @@ const bars = (rows, label, value, fmt = money) => {
     </div>`).join('')}</div>`;
 };
 
-export default async function reports([from, to]) {
+export default async function reports([from, to, bq]) {
   const valid = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
   const [f, t] = valid(from) && valid(to) ? [from, to] : preset('month');
-  const [r, actual] = await Promise.all([db.rpc('report_summary', { p_from: f, p_to: t }), db.rpc('tech_time', { p_from: f, p_to: t }).catch(() => [])]);
+  // one branch or the whole company; a user tied to one branch always sees that branch
+  const branch = ctx.branchLocked ? ctx.branch?.id : (ctx.allBranches.some((b) => b.id === bq) ? bq : null);
+  const [r, actual] = await Promise.all([db.rpc('report_summary', { p_from: f, p_to: t, p_branch: branch }), db.rpc('tech_time', { p_from: f, p_to: t }).catch(() => [])]);
   const actualBy = Object.fromEntries((actual || []).map((x) => [x.name, Number(x.hours)]));
   const gross = round3(Number(r.revenue) - Number(r.cogs));
   const net = round3(gross - Number(r.expenses));
@@ -37,12 +40,13 @@ export default async function reports([from, to]) {
 
   return {
     title: 'التقارير',
-    html: `<div class="page-head"><div><h1>التقارير</h1><p class="lead">من ${esc(date(f))} إلى ${esc(date(t))}</p></div>
+    html: `<div class="page-head"><div><h1>التقارير</h1><p class="lead">${ctx.multiBranch ? `${esc(branch ? ctx.branchName(branch) : 'كل الفروع')} · ` : ''}من ${esc(date(f))} إلى ${esc(date(t))}</p></div>
         <button class="btn" id="csv">تصدير الفواتير إلى Excel</button></div>
       <div class="row">
         ${PRESETS.map(([k, l]) => `<button class="btn small ${active === k ? 'teal' : ''}" data-preset="${k}">${l}</button>`).join('')}
         <input type="date" id="from" value="${f}" aria-label="من" style="max-width:170px">
         <input type="date" id="to" value="${t}" aria-label="إلى" style="max-width:170px">
+        ${ctx.multiBranch && !ctx.branchLocked ? `<select id="branch" aria-label="الفرع" style="max-width:200px"><option value="">كل الفروع</option>${ctx.allBranches.map((b) => `<option value="${b.id}" ${b.id === branch ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>` : ''}
         <button class="btn small" id="apply">عرض</button>
       </div>
 
@@ -56,6 +60,8 @@ export default async function reports([from, to]) {
       </div>
 
       <div class="grid two">
+        ${ctx.multiBranch && !branch && (r.by_branch || []).length ? `<section class="card"><h2 style="margin-bottom:12px">المبيعات حسب الفرع</h2>
+          ${bars(r.by_branch.map((x) => ({ ...x, label: `${x.name} · ${num(x.invoices)} فاتورة` })), 'label', 'amount')}</section>` : ''}
         <section class="card"><h2 style="margin-bottom:12px">قائمة الدخل</h2>
           <div class="totals">
             <span>إيراد العمالة</span><span class="num">${money(r.labor)}</span>
@@ -103,22 +109,24 @@ export default async function reports([from, to]) {
         </section>
       </div>`,
     bind(el) {
-      el.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => { const [a, z] = preset(b.dataset.preset); location.hash = `#/reports/${a}/${z}`; }));
+      const br = () => { const v = el.querySelector('#branch')?.value; return v ? `/${v}` : ''; };
+      el.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => { const [a, z] = preset(b.dataset.preset); location.hash = `#/reports/${a}/${z}${br()}`; }));
       el.querySelector('#apply').addEventListener('click', () => {
         const a = el.querySelector('#from').value, z = el.querySelector('#to').value;
-        if (a && z) location.hash = `#/reports/${a <= z ? a : z}/${a <= z ? z : a}`;
+        if (a && z) location.hash = `#/reports/${a <= z ? a : z}/${a <= z ? z : a}${br()}`;
       });
+      el.querySelector('#branch')?.addEventListener('change', () => el.querySelector('#apply').click());
       el.querySelector('#csv').addEventListener('click', (ev) => busy(ev.currentTarget, async () => {
         const fISO = new Date(`${f}T00:00:00+04:00`).toISOString(), tISO = new Date(`${t}T00:00:00+04:00`).getTime() + 864e5;
-        const rows = await db.get('invoice_balances', { select: 'invoice_no,issued_at,labor_total,parts_total,discount,subtotal,vat,total,paid,balance,customer_id', issued_at: `gte.${fISO}`, and: `(issued_at.lt.${new Date(tISO).toISOString()})`, order: 'invoice_no' });
+        const rows = await db.get('invoice_balances', { select: 'invoice_no,issued_at,labor_total,parts_total,discount,subtotal,vat,total,paid,balance,customer_id,branch_id', ...(branch ? { branch_id: `eq.${branch}` } : {}), issued_at: `gte.${fISO}`, and: `(issued_at.lt.${new Date(tISO).toISOString()})`, order: 'invoice_no' });
         const ids = [...new Set(rows.map((x) => x.customer_id))];
         const custs = ids.length ? await db.get('customers', { select: 'id,name,phone,vat_number', id: `in.(${ids.join(',')})` }) : [];
         const cmap = Object.fromEntries(custs.map((c) => [c.id, c]));
-        const head = ['رقم الفاتورة', 'التاريخ', 'العميل', 'الهاتف', 'الرقم الضريبي للعميل', 'العمالة', 'القطع', 'الخصم', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'المدفوع', 'المتبقي'];
+        const head = ['رقم الفاتورة', 'التاريخ', ...(ctx.multiBranch ? ['الفرع'] : []), 'العميل', 'الهاتف', 'الرقم الضريبي للعميل', 'العمالة', 'القطع', 'الخصم', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'المدفوع', 'المتبقي'];
         const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
         const lines = [head.map(q).join(',')].concat(rows.map((x) => {
           const c = cmap[x.customer_id] || {};
-          return [x.invoice_no, new Date(new Date(x.issued_at).getTime() + 4 * 3600e3).toISOString().slice(0, 10), c.name, c.phone, c.vat_number,
+          return [x.invoice_no, new Date(new Date(x.issued_at).getTime() + 4 * 3600e3).toISOString().slice(0, 10), ...(ctx.multiBranch ? [ctx.branchName(x.branch_id)] : []), c.name, c.phone, c.vat_number,
             x.labor_total, x.parts_total, x.discount, x.subtotal, x.vat, x.total, x.paid, x.balance].map(q).join(',');
         }));
         const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });

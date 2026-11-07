@@ -2,6 +2,7 @@ import { LOCALE } from '../i18n.js';
 import { db } from '../api.js';
 import { esc, money, num, date, METHODS } from '../format.js';
 import { icon, toast, field, options, openDialog, busy } from '../ui.js';
+import { ctx } from '../state.js';
 
 export const EXPENSE_CATS = ['إيجار', 'رواتب', 'كهرباء وماء', 'اتصالات وإنترنت', 'وقود', 'صيانة المعدات', 'مستهلكات الورشة', 'تسويق', 'رسوم حكومية', 'تأمين', 'أخرى'];
 
@@ -21,7 +22,7 @@ const toRow = (d) => ({ category: d.category, description: d.description, amount
 
 export default async function expenses([month]) {
   const m = /^\d{4}-\d{2}$/.test(month || '') ? month : monthNow();
-  const list = await db.get('expenses', { expense_date: `gte.${m}-01`, and: `(expense_date.lte.${lastDay(m)})`, order: 'expense_date.desc,created_at.desc' });
+  const list = await db.get('expenses', { ...ctx.here, expense_date: `gte.${m}-01`, and: `(expense_date.lte.${lastDay(m)})`, order: 'expense_date.desc,created_at.desc' });
   const total = list.reduce((a, e) => a + Number(e.amount), 0);
   const vat = list.reduce((a, e) => a + Number(e.vat), 0);
   const byCat = {};

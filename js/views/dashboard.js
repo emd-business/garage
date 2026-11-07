@@ -17,8 +17,8 @@ export default async function dashboard() {
   const dayStart = new Date(`${new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10)}T00:00:00+04:00`);
   const [k, jobs, appts] = await Promise.all([
     db.rpc('dashboard_today'),
-    db.get('job_orders', { select: JOB_SELECT, status: 'not.in.(delivered,cancelled)', order: 'promised_at.asc.nullslast', limit: 50 }),
-    ctx.can('owner', 'manager', 'reception') ? db.get('appointments', { select: 'id', status: 'in.(booked,confirmed)', starts_at: `gte.${dayStart.toISOString()}`, and: `(starts_at.lt.${new Date(dayStart.getTime() + 864e5).toISOString()})` }).catch(() => []) : [],
+    db.get('job_orders', { ...ctx.here, select: JOB_SELECT, status: 'not.in.(delivered,cancelled)', order: 'promised_at.asc.nullslast', limit: 50 }),
+    ctx.can('owner', 'manager', 'reception') ? db.get('appointments', { ...ctx.here, select: 'id', status: 'in.(booked,confirmed)', starts_at: `gte.${dayStart.toISOString()}`, and: `(starts_at.lt.${new Date(dayStart.getTime() + 864e5).toISOString()})` }).catch(() => []) : [],
   ]);
   const by = (k && k.by_status) || {};
   const inShop = Object.values(by).reduce((a, b) => a + Number(b), 0);

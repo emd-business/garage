@@ -39,7 +39,7 @@ export default async function appointments([day]) {
   const today = dayStr(Date.now());
   const sel = /^\d{4}-\d{2}-\d{2}$/.test(day || '') ? day : today;
   const [list, services, due] = await Promise.all([
-    db.get('appointments', { starts_at: `gte.${dayStart(sel)}`, and: `(starts_at.lt.${dayStart(addDays(sel, 1))})`, order: 'starts_at' }),
+    db.get('appointments', { ...ctx.here, starts_at: `gte.${dayStart(sel)}`, and: `(starts_at.lt.${dayStart(addDays(sel, 1))})`, order: 'starts_at' }),
     db.get('services', { active: 'eq.true', order: 'name', select: 'name' }),
     db.rpc('service_due', { p_days: 14 }),
   ]);

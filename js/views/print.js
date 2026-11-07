@@ -17,6 +17,7 @@ export default async function printDoc([id]) {
   const g = ctx.garage, v = j.vehicles || {}, c = j.customers || {};
   const t = inv ? { labor: inv.labor_total, parts: inv.parts_total, discount: inv.discount, subtotal: inv.subtotal, vat: inv.vat, total: inv.total } : computeTotals(lines, g.vat_rate);
   const isInvoice = !!inv;
+  const br = ctx.allBranches.find((b) => b.id === j.branch_id);
 
   const html = `<div class="print-bar">
       <button class="btn primary" id="do-print">${icon('print')} اطبع أو احفظ PDF</button>
@@ -30,8 +31,9 @@ export default async function printDoc([id]) {
           ${g.name_en ? `<div class="g-meta" dir="ltr" style="text-align:right">${esc(g.name_en)}</div>` : ''}
         </div>
         <div class="g-meta" style="text-align:left">
-          ${g.address ? `<div>${esc(g.address)}</div>` : ''}
-          ${g.phone ? `<div>هاتف: <bdi class="ltr">${esc(g.phone)}</bdi></div>` : ''}
+          ${br && ctx.multiBranch ? `<div><strong>${esc(br.name)}</strong></div>` : ''}
+          ${(br?.address || g.address) ? `<div>${esc(br?.address || g.address)}</div>` : ''}
+          ${(br?.phone || g.phone) ? `<div>هاتف: <bdi class="ltr">${esc(br?.phone || g.phone)}</bdi></div>` : ''}
           ${g.cr_number ? `<div>س.ت: <bdi class="ltr">${esc(g.cr_number)}</bdi></div>` : ''}
           ${g.vat_number ? `<div>الرقم الضريبي: <bdi class="ltr">${esc(g.vat_number)}</bdi></div>` : ''}
         </div>

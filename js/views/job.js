@@ -32,7 +32,8 @@ export default async function job([id]) {
   const [lines, services, items, inv, inspection, time] = await Promise.all([
     office ? db.get('job_lines', { job_id: `eq.${id}`, order: 'created_at' }) : db.rpc('job_lines_for_tech', { p_job: id }),
     editLines ? db.get('services', { active: 'eq.true', order: 'name' }) : [],
-    editLines ? db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,sell_price,unit_cost' }) : [],
+    editLines ? db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,sell_price,unit_cost,item_stock(branch_id,qty)' })
+      .then((its) => its.map((it) => (ctx.multiBranch ? { ...it, qty: (it.item_stock || []).find((s) => s.branch_id === j.branch_id)?.qty ?? 0 } : it))) : [],
     office ? db.one('invoice_balances', { job_id: `eq.${id}` }) : null,
     db.get('inspection_items', { job_id: `eq.${id}`, order: 'created_at' }).catch(() => []),
     db.rpc('job_time', { p_job: id }).catch(() => null),
@@ -189,7 +190,7 @@ export default async function job([id]) {
     html: `<div class="page-head">
         <div class="stack" style="gap:6px">
           <a href="#/board" class="subtle">${icon('back').replace('<svg', '<svg style="width:14px;height:14px;vertical-align:-2px"')} لوحة الورشة</a>
-          <h1 class="row" style="gap:10px">أمر عمل ${idn(j.job_no)} ${badge(j.status)} ${isLate(j) ? '<span class="badge danger">متأخرة</span>' : ''}${j.comeback_of ? ` <a class="badge warning" href="#/job/${j.comeback_of}">عودة ضمن الضمان</a>` : ''}</h1>
+          <h1 class="row" style="gap:10px">أمر عمل ${idn(j.job_no)} ${badge(j.status)} ${isLate(j) ? '<span class="badge danger">متأخرة</span>' : ''}${ctx.multiBranch ? ` <span class="badge neutral">${esc(ctx.branchName(j.branch_id))}</span>` : ''}${j.comeback_of ? ` <a class="badge warning" href="#/job/${j.comeback_of}">عودة ضمن الضمان</a>` : ''}</h1>
           <p class="row" style="gap:10px">${plateTag(v)} <strong>${esc(carName(v))}</strong>${office ? ` · <a href="#/customer/${c.id}">${esc(c.name || '')}</a> ${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''}` : ''}</p>
         </div>
       </div>

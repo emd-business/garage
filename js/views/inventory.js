@@ -29,13 +29,22 @@ const toRow = (d) => ({
 export default async function inventory() {
   const canEdit = ctx.can('owner', 'manager', 'storekeeper');
   const seeCost = ctx.can('owner', 'manager', 'storekeeper', 'accountant');
-  const items = await db.get('items', { active: 'eq.true', order: 'name' });
+  const [all, stock] = await Promise.all([
+    db.get('items', { active: 'eq.true', order: 'name' }),
+    ctx.multiBranch ? db.get('item_stock', { select: 'item_id,branch_id,qty' }).catch(() => []) : [],
+  ]);
+  // quantities shown are for the branch the user is working in; the total across branches is kept on the item
+  const items = all.map((it) => {
+    if (!ctx.multiBranch) return it;
+    const here = stock.find((s) => s.item_id === it.id && s.branch_id === ctx.branch?.id);
+    return { ...it, total: it.qty, qty: here ? here.qty : 0 };
+  });
   const value = items.reduce((a, it) => a + Math.max(0, Number(it.qty)) * Number(it.unit_cost), 0);
   const low = items.filter((it) => Number(it.qty) <= Number(it.reorder_level));
 
   return {
     title: 'المخزون',
-    html: `<div class="page-head"><div><h1>المخزون وقطع الغيار</h1><p class="lead">${num(items.length)} صنف${low.length ? ` · ${num(low.length)} تحتاج إعادة طلب` : ''}</p></div>
+    html: `<div class="page-head"><div><h1>المخزون وقطع الغيار</h1><p class="lead">${ctx.multiBranch ? `${esc(ctx.branch?.name || '')} · ` : ''}${num(items.length)} صنف${low.length ? ` · ${num(low.length)} تحتاج إعادة طلب` : ''}</p></div>
         ${canEdit ? `<button class="btn primary" id="add">${icon('plus')} صنف جديد</button>` : ''}</div>
       <div class="kpis">
         <div class="kpi"><span class="label">الأصناف</span><span class="value">${num(items.length)}</span></div>
@@ -44,11 +53,11 @@ export default async function inventory() {
       </div>
       <input id="q" type="search" placeholder="ابحث باسم الصنف أو رمزه" aria-label="بحث في المخزون">
       <section class="card pad-0">${items.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>الصنف</th><th>الفئة</th><th>المكان</th><th class="num">الكمية</th><th>الحالة</th>${seeCost ? '<th class="num">التكلفة</th>' : ''}<th class="num">سعر البيع</th>${canEdit ? '<th><span class="hidden">إجراءات</span></th>' : ''}</tr></thead>
+        <thead><tr><th>الصنف</th><th>الفئة</th><th>المكان</th><th class="num">${ctx.multiBranch ? 'في هذا الفرع' : 'الكمية'}</th>${ctx.multiBranch ? '<th class="num">كل الفروع</th>' : ''}<th>الحالة</th>${seeCost ? '<th class="num">التكلفة</th>' : ''}<th class="num">سعر البيع</th>${canEdit ? '<th><span class="hidden">إجراءات</span></th>' : ''}</tr></thead>
         <tbody>${items.map((it) => `<tr data-name="${esc(`${it.name} ${it.sku || ''}`.toLowerCase())}"><td><a href="#/item/${it.id}"><strong>${esc(it.name)}</strong></a>${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}</td>
-          <td>${esc(it.category || '')}</td><td>${esc(it.location || '')}</td><td class="num">${num(it.qty)}</td><td>${stockBadge(it)}</td>
+          <td>${esc(it.category || '')}</td><td>${esc(it.location || '')}</td><td class="num">${num(it.qty)}</td>${ctx.multiBranch ? `<td class="num subtle">${num(it.total)}</td>` : ''}<td>${stockBadge(it)}</td>
           ${seeCost ? `<td class="num">${money(it.unit_cost)}</td>` : ''}<td class="num">${money(it.sell_price)}</td>
-          ${canEdit ? `<td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn small" data-adjust="${it.id}">الكمية</button><button class="btn small ghost" data-edit="${it.id}">تعديل</button></div></td>` : ''}</tr>`).join('')}</tbody></table></div>`
+          ${canEdit ? `<td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn small" data-adjust="${it.id}">الكمية</button>${ctx.multiBranch && !ctx.branchLocked ? `<button class="btn small" data-move="${it.id}">تحويل</button>` : ''}<button class="btn small ghost" data-edit="${it.id}">تعديل</button></div></td>` : ''}</tr>`).join('')}</tbody></table></div>`
     : `<div class="empty"><p>لا توجد أصناف بعد.</p>${canEdit ? '<p class="subtle">أضف قطع الغيار التي تبيعها، فتُخصم تلقائياً عند صرفها لأمر عمل.</p>' : ''}</div>`}</section>`,
     bind(el) {
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -73,11 +82,26 @@ export default async function inventory() {
         openDialog(`تعديل كمية: ${it.name}`, `<p class="muted">الكمية الحالية ${num(it.qty)}</p>
           ${field('الكمية بعد الجرد أو الشراء', `<input name="qty" type="number" step="1" min="0" inputmode="numeric" required value="${esc(it.qty)}">`, { req: true })}
           ${field('السبب', '<select name="reason"><option>شراء من مورد</option><option>جرد</option><option>تالف</option><option>تصحيح</option></select>')}`, async (d) => {
-          const diff = Number(d.qty) - Number(it.qty);
-          if (!diff) return true;
-          await db.update('items', { id: `eq.${it.id}` }, { qty: Number(d.qty) });
-          await db.insert('stock_movements', { item_id: it.id, qty: diff, reason: d.reason });
+          if (Number(d.qty) === Number(it.qty)) return true;
+          await db.rpc('adjust_stock', { p_item: it.id, p_new_qty: Number(d.qty), p_reason: d.reason });
           toast('عُدّلت الكمية'); reload();
+          return true;
+        });
+      }));
+      el.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', () => {
+        const it = items.find((x) => x.id === b.dataset.move);
+        const per = (bid) => Number((stock.find((s) => s.item_id === it.id && s.branch_id === bid) || {}).qty || 0);
+        const opts = (sel) => ctx.branches.map((x) => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)} (${num(per(x.id))})</option>`).join('');
+        const other = ctx.branches.find((x) => x.id !== ctx.branch?.id);
+        openDialog(`تحويل بين الفروع: ${it.name}`, `<p class="muted">ينقل الكمية من فرع إلى آخر دون أن يغيّر قيمة المخزون في الحسابات.</p>
+          <div class="grid form" style="grid-template-columns:1fr 1fr">
+            ${field('من فرع', `<select name="from">${opts(ctx.branch?.id)}</select>`)}
+            ${field('إلى فرع', `<select name="to">${opts(other?.id)}</select>`)}
+          </div>
+          ${field('الكمية', '<input name="qty" type="number" step="1" min="1" inputmode="numeric" required>', { req: true })}`, async (d) => {
+          if (d.from === d.to) { toast('اختر فرعين مختلفين', 'error'); return false; }
+          await db.rpc('transfer_stock', { p_item: it.id, p_from: d.from, p_to: d.to, p_qty: Number(d.qty) });
+          toast('حُوّلت الكمية'); reload();
           return true;
         });
       }));
@@ -90,9 +114,10 @@ export async function itemView([id]) {
   const it = await db.one('items', { id: `eq.${id}` });
   if (!it) throw new Error('الصنف غير موجود');
   const seeCost = ctx.can('owner', 'manager', 'storekeeper', 'accountant');
-  const [moves, buys] = await Promise.all([
-    db.get('stock_movements', { item_id: `eq.${id}`, order: 'created_at.desc', limit: 200, select: 'qty,reason,created_at,job_id,job_orders(job_no)' }).catch(() => []),
+  const [moves, buys, stock] = await Promise.all([
+    db.get('stock_movements', { item_id: `eq.${id}`, order: 'created_at.desc', limit: 200, select: 'qty,reason,created_at,job_id,branch_id,job_orders(job_no)' }).catch(() => []),
     seeCost ? db.get('purchase_lines', { item_id: `eq.${id}`, select: 'qty,unit_cost,purchases(purchase_no,purchase_date,suppliers(name))' }).catch(() => []) : [],
+    ctx.multiBranch ? db.get('item_stock', { item_id: `eq.${id}`, select: 'branch_id,qty' }).catch(() => []) : [],
   ]);
   const since = Date.now() - 90 * 864e5;
   const used90 = moves.filter((m) => Number(m.qty) < 0 && m.job_id && new Date(m.created_at) >= since).reduce((a, m) => a - Number(m.qty), 0)
@@ -104,7 +129,8 @@ export async function itemView([id]) {
     html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/inventory" class="subtle">المخزون</a><h1>${esc(it.name)}</h1>
         <p class="muted">${[it.sku && `<bdi class="ltr">${esc(it.sku)}</bdi>`, it.category && esc(it.category), it.location && `المكان: ${esc(it.location)}`].filter(Boolean).join(' · ')}</p></div>${stockBadge(it)}</div>
       <div class="kpis">
-        <div class="kpi"><span class="label">الكمية الحالية</span><span class="value">${num(it.qty)}</span></div>
+        <div class="kpi"><span class="label">${ctx.multiBranch ? 'الكمية في كل الفروع' : 'الكمية الحالية'}</span><span class="value">${num(it.qty)}</span></div>
+        ${stock.map((s) => `<div class="kpi"><span class="label">${esc(ctx.branchName(s.branch_id))}</span><span class="value">${num(s.qty)}</span></div>`).join('')}
         <div class="kpi"><span class="label">الاستهلاك الشهري</span><span class="value">${num(Math.round(monthly * 10) / 10)}</span></div>
         <div class="kpi ${cover !== null && cover < 14 ? 'alert' : ''}"><span class="label">يكفي لمدة</span><span class="value">${cover === null ? '—' : `${num(cover)} يوماً`}</span></div>
         ${seeCost ? `<div class="kpi"><span class="label">متوسط التكلفة</span><span class="value">${money(it.unit_cost)}</span></div>` : ''}
@@ -112,7 +138,7 @@ export async function itemView([id]) {
       </div>
       <div class="grid two">
         <section class="card"><h2 style="margin-bottom:10px">حركة الصنف</h2>
-          ${moves.length ? `<div class="list">${moves.map((m) => `<div class="list-item"><span>${esc(m.reason)}${m.job_id ? ` · <a href="#/job/${m.job_id}">أمر ${idn(m.job_orders?.job_no)}</a>` : ''}<br><span class="subtle">${esc(dateTime(m.created_at))}</span></span>
+          ${moves.length ? `<div class="list">${moves.map((m) => `<div class="list-item"><span>${esc(m.reason)}${ctx.multiBranch ? ` · ${esc(ctx.branchName(m.branch_id))}` : ''}${m.job_id ? ` · <a href="#/job/${m.job_id}">أمر ${idn(m.job_orders?.job_no)}</a>` : ''}<br><span class="subtle">${esc(dateTime(m.created_at))}</span></span>
             <strong style="color:${Number(m.qty) < 0 ? 'var(--danger-ink)' : 'var(--success-ink)'}"><bdi>${Number(m.qty) > 0 ? '+' : ''}${num(m.qty)}</bdi></strong></div>`).join('')}</div>` : '<p class="muted">لا توجد حركات.</p>'}
         </section>
         ${seeCost ? `<section class="card"><h2 style="margin-bottom:10px">آخر المشتريات</h2>

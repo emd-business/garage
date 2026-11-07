@@ -54,12 +54,25 @@ export default async function settings() {
       </section>
 
       <section class="card pad-0">
+        <div class="card-head" style="padding:16px 20px 0"><h2>الفروع</h2><button class="btn small" id="add-br">${icon('plus')} فرع</button></div>
+        <p class="subtle" style="padding:0 20px">لكل فرع أوامر عمله ومواعيده ومخزونه ومصروفاته، والعملاء والأصناف والحسابات مشتركة بين الفروع.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>الفرع</th><th>الهاتف</th><th>العنوان</th><th>الحالة</th><th><span class="hidden">تعديل</span></th></tr></thead>
+          <tbody>${ctx.allBranches.map((b) => `<tr><td>${esc(b.name)}${b.is_main ? ' <span class="badge neutral">الرئيسي</span>' : ''}</td>
+            <td><bdi class="ltr">${esc(b.phone || '—')}</bdi></td><td>${esc(b.address || '—')}</td>
+            <td>${b.active ? '<span class="badge success">مفعّل</span>' : '<span class="badge neutral">موقوف</span>'}</td>
+            <td><button class="btn small ghost" data-br="${b.id}">تعديل</button></td></tr>`).join('')}</tbody>
+        </table></div>
+      </section>
+
+      <section class="card pad-0">
         <div class="card-head" style="padding:16px 20px 0"><h2>الفريق</h2><button class="btn small teal" id="invite">${icon('plus')} ادعُ موظفاً</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th><th>الحالة</th></tr></thead>
+          <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th>${ctx.multiBranch ? '<th>الفرع</th>' : ''}<th>الحالة</th></tr></thead>
           <tbody>${ctx.staff.map((s) => `<tr><td>${esc(s.full_name)}${s.user_id === ctx.uid ? ' <span class="subtle">(أنت)</span>' : ''}</td>
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? esc(ROLES[s.role]) : `<select data-role="${s.user_id}" aria-label="دور ${esc(s.full_name)}" style="max-width:180px">${options(roleOpts, s.role)}</select>`}</td>
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? '—' : `<input type="number" min="0" max="100" step="0.5" value="${esc(s.commission_pct ?? 0)}" data-comm="${s.user_id}" aria-label="عمولة ${esc(s.full_name)}" style="max-width:90px">`}</td>
+            ${ctx.multiBranch ? `<td>${s.role === 'owner' || s.user_id === ctx.uid ? 'كل الفروع' : `<select data-mbr="${s.user_id}" aria-label="فرع ${esc(s.full_name)}" style="max-width:180px"><option value="">كل الفروع</option>${ctx.branches.map((b) => `<option value="${b.id}" ${b.id === s.branch_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`}</td>` : ''}
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? '<span class="badge success">نشط</span>' : `<button class="btn small ${s.active ? 'ghost' : 'teal'}" data-active="${s.user_id}" data-to="${!s.active}">${s.active ? 'أوقف' : 'فعّل'}</button>`}</td></tr>`).join('')}</tbody>
         </table></div>
         ${invites.length ? `<div style="padding:12px 20px 20px"><h3>دعوات لم تُستخدم</h3><div class="list">${invites.map((i) => `<div class="list-item">
@@ -107,6 +120,24 @@ export default async function settings() {
       });
       el.querySelector('#add-svc').addEventListener('click', () => svcDialog());
       el.querySelectorAll('[data-svc]').forEach((b) => b.addEventListener('click', () => svcDialog(services.find((s) => s.id === b.dataset.svc))));
+
+      const brDialog = (b = {}) => openDialog(b.id ? 'تعديل فرع' : 'فرع جديد', `
+        ${field('اسم الفرع', `<input name="name" required value="${esc(b.name || '')}">`, { req: true })}
+        ${field('هاتف الفرع', `<input name="phone" type="tel" dir="ltr" value="${esc(b.phone || '')}">`, { hint: 'يظهر على فواتير هذا الفرع' })}
+        ${field('عنوان الفرع', `<input name="address" value="${esc(b.address || '')}">`)}
+        ${b.id && !b.is_main ? `<label class="row" style="gap:8px"><input type="checkbox" name="active" value="1" ${b.active ? 'checked' : ''} style="width:auto;min-height:0"> مفعّل</label>` : ''}`, async (d) => {
+        const row = { name: d.name, phone: d.phone || null, address: d.address || null };
+        if (b.id) await db.update('branches', { id: `eq.${b.id}` }, b.is_main ? row : { ...row, active: !!d.active });
+        else await db.insert('branches', row);
+        toast('حُفظ الفرع');
+        location.reload();
+      });
+      el.querySelector('#add-br').addEventListener('click', () => brDialog());
+      el.querySelectorAll('[data-br]').forEach((x) => x.addEventListener('click', () => brDialog(ctx.allBranches.find((b) => b.id === x.dataset.br))));
+      el.querySelectorAll('[data-mbr]').forEach((s) => s.addEventListener('change', () => busy(s, async () => {
+        await db.update('memberships', { garage_id: `eq.${g.id}`, user_id: `eq.${s.dataset.mbr}` }, { branch_id: s.value || null });
+        toast(s.value ? 'صار الموظف يعمل في هذا الفرع فقط' : 'صار الموظف يعمل في كل الفروع'); ctx.staff = await db.rpc('garage_staff');
+      })));
 
       el.querySelector('#invite').addEventListener('click', () => openDialog('دعوة موظف', `
         <p class="muted">ينشئ الموظف حساباً في التطبيق ثم يُدخل رمز الدعوة، فينضم إلى كراجك بالدور الذي تختاره. الرمز صالح ٧ أيام ولمرة واحدة.</p>
