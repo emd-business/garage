@@ -69,7 +69,7 @@ export async function customerView([id]) {
     title: c.name,
     html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/customers" class="subtle">العملاء</a><h1>${esc(c.name)}</h1>
         <p class="muted">${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''} ${c.customer_type === 'company' ? '· شركة' : ''}</p></div>
-        <div class="row">${canEdit ? `<button class="btn" id="edit">عدّل البيانات</button><a class="btn primary" href="#/intake">${icon('plus')} استلام سيارة</a>` : ''}</div></div>
+        <div class="row"><a class="btn" href="#/statement/customer/${c.id}" target="_blank" rel="noopener">${icon('print')} كشف حساب</a>${canEdit ? `<button class="btn" id="edit">عدّل البيانات</button><a class="btn primary" href="#/intake">${icon('plus')} استلام سيارة</a>` : ''}</div></div>
       <div class="kpis">
         <div class="kpi"><span class="label">الزيارات</span><span class="value">${num(jobs.length)}</span></div>
         <div class="kpi"><span class="label">ما دفعه</span><span class="value">${money(spent)}</span></div>

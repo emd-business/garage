@@ -16,6 +16,7 @@ import purchases from './views/purchases.js';
 import expenses from './views/expenses.js';
 import reports from './views/reports.js';
 import pricing from './views/pricing.js';
+import accounting, { ledger, statement } from './views/accounting.js';
 import settings from './views/settings.js';
 
 const root = document.getElementById('app');
@@ -30,13 +31,14 @@ const NAV = [
   { href: '#/purchases', key: 'purchases', label: 'المشتريات', icon: 'cart', roles: ['owner', 'manager', 'accountant', 'storekeeper'] },
   { href: '#/expenses', key: 'expenses', label: 'المصروفات', icon: 'receipt', roles: ['owner', 'manager', 'accountant'] },
   { href: '#/reports', key: 'reports', label: 'التقارير', icon: 'chart', roles: ['owner', 'manager', 'accountant'] },
+  { href: '#/accounting', key: 'accounting', label: 'المحاسبة', icon: 'book', roles: ['owner', 'manager', 'accountant'] },
   { href: '#/pricing', key: 'pricing', label: 'التسعير', icon: 'calc', roles: ['owner', 'manager'] },
   { href: '#/settings', key: 'settings', label: 'الإعدادات', icon: 'settings', roles: ['owner', 'manager'] },
 ];
 
 const ROUTES = {
   '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, item: itemView, settings,
-  appointments, purchases, expenses, reports, pricing, more: moreView,
+  appointments, purchases, expenses, reports, pricing, more: moreView, accounting, ledger, statement,
 };
 
 function parseRoute() {
@@ -83,12 +85,12 @@ async function route() {
   if (!ctx.garage || !ctx.role) return renderOnboarding();
   const { key, params } = parseRoute();
   const view = ROUTES[key];
-  const navKey = { item: 'inventory', customer: 'customers' }[key] || key;
-  const allowed = key === 'print' || key === 'job' || key === 'more' || NAV.find((n) => n.key === navKey)?.roles.includes(ctx.role);
+  const navKey = { item: 'inventory', customer: 'customers', ledger: 'accounting' }[key] || key;
+  const allowed = key === 'print' || key === 'statement' || key === 'job' || key === 'more' || NAV.find((n) => n.key === navKey)?.roles.includes(ctx.role);
   if (!view || !allowed) { location.hash = `#/${homeFor(ctx.role)}`; return; }
   const seq = ++renderSeq;
 
-  if (key === 'print') {
+  if (key === 'print' || key === 'statement') {
     root.innerHTML = '<div class="skeleton" style="margin:24px"></div>';
     try {
       const out = await view(params);
