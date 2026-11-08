@@ -72,7 +72,8 @@ export default async function reports([from, to, bq]) {
             ${Number(r.discount) ? `<span>الخصومات</span><span class="num">− ${money(r.discount)}</span>` : ''}
             ${Number(r.credits) ? `<span>الإشعارات الدائنة (${num(r.credit_notes)})</span><span class="num">− ${money(r.credits)}</span>` : ''}
             <span><strong>صافي الإيرادات</strong></span><span class="num"><strong>${money(r.revenue)}</strong></span>
-            <span>تكلفة القطع المباعة</span><span class="num">− ${money(r.cogs)}</span>
+            <span>تكلفة القطع المباعة</span><span class="num">− ${money(Number(r.cogs) - Number(r.sublet || 0))}</span>
+            ${Number(r.sublet) ? `<span>تكلفة الأعمال الخارجية</span><span class="num">− ${money(r.sublet)}</span>` : ''}
             <span><strong>مجمل الربح</strong></span><span class="num"><strong>${money(gross)}</strong></span>
             <span>المصروفات</span><span class="num">− ${money(r.expenses)}</span>
             <span class="grand">صافي الربح</span><span class="num grand" style="color:${net < 0 ? 'var(--danger-ink)' : 'inherit'}">${money(net)}</span>

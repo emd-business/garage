@@ -15,6 +15,7 @@ import inventory, { itemView } from './views/inventory.js';
 import appointments from './views/appointments.js';
 import purchases from './views/purchases.js';
 import expenses from './views/expenses.js';
+import cash from './views/cash.js';
 import reports from './views/reports.js';
 import pricing from './views/pricing.js';
 import accounting, { ledger, statement } from './views/accounting.js';
@@ -32,6 +33,7 @@ const NAV = [
   { href: '#/customers', key: 'customers', label: 'العملاء', icon: 'users', roles: ['owner', 'manager', 'reception', 'accountant'] },
   { href: '#/inventory', key: 'inventory', label: 'المخزون', icon: 'box', roles: ['owner', 'manager', 'reception', 'accountant', 'storekeeper'] },
   { href: '#/purchases', key: 'purchases', label: 'المشتريات', icon: 'cart', roles: ['owner', 'manager', 'accountant', 'storekeeper'] },
+  { href: '#/cash', key: 'cash', label: 'الصندوق', icon: 'cash', roles: ['owner', 'manager', 'accountant', 'reception'] },
   { href: '#/expenses', key: 'expenses', label: 'المصروفات', icon: 'receipt', roles: ['owner', 'manager', 'accountant'] },
   { href: '#/reports', key: 'reports', label: 'التقارير', icon: 'chart', roles: ['owner', 'manager', 'accountant'] },
   { href: '#/accounting', key: 'accounting', label: 'المحاسبة', icon: 'book', roles: ['owner', 'manager', 'accountant'] },
@@ -43,7 +45,7 @@ const canSee = (n) => (n.admin ? ctx.isAdmin : n.roles.includes(ctx.role));
 
 const ROUTES = {
   '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, item: itemView, settings,
-  appointments, purchases, expenses, reports, pricing, more: moreView, accounting, ledger, statement, admin,
+  appointments, purchases, expenses, cash, reports, pricing, more: moreView, accounting, ledger, statement, admin,
 };
 
 function parseRoute() {

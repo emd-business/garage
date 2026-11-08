@@ -47,6 +47,8 @@ export default async function job([id]) {
     office0 ? db.get('deposit_balances', { job_id: `eq.${id}`, order: 'paid_at' }).catch(() => []) : [],
     office0 && inv ? db.get('customers', { customer_type: 'eq.insurance', select: 'id,name', order: 'name' }).catch(() => []) : [],
   ]);
+  const suppliers = editLines || lines.some((l) => l.supplier_id) ? await db.rpc('sublet_suppliers').catch(() => []) : [];
+  const supName = (id) => suppliers.find((x) => x.id === id)?.name || '';
   const realPayments = payments.filter((p) => !p.deposit_id);
   const v = j.vehicles || {}, c = j.customers || {};
   const g = ctx.garage;
@@ -67,7 +69,7 @@ export default async function job([id]) {
 
   const lineRow = (l) => `<tr>
       <td><span class="badge ${l.type === 'part' ? 'info' : 'neutral'}">${l.type === 'part' ? 'قطعة' : 'عمالة'}</span></td>
-      <td>${esc(l.description)}${l.technician_id && ctx.staffName(l.technician_id) ? `<br><span class="subtle">${esc(ctx.staffName(l.technician_id))}</span>` : ''}
+      <td>${esc(l.description)}${l.supplier_id ? `<br><span class="badge warning">عمل خارجي${supName(l.supplier_id) ? `: ${esc(supName(l.supplier_id))}` : ''}</span>${office ? ` <span class="subtle" style="white-space:nowrap">التكلفة ${money(Number(l.qty) * Number(l.unit_cost))}</span>` : ''}` : ''}${l.technician_id && ctx.staffName(l.technician_id) ? `<br><span class="subtle">${esc(ctx.staffName(l.technician_id))}</span>` : ''}
         ${APPROVAL[l.approval_state] ? ` <span class="badge ${APPROVAL[l.approval_state][1]}">${APPROVAL[l.approval_state][0]}</span>` : ''}
         ${Number(l.warranty_days) ? ` <span class="subtle">· ضمان ${num(l.warranty_days)} يوماً</span>` : ''}
         ${editLines && !locked && l.approval_state === 'pending' ? `<br><span class="row" style="gap:6px;margin-top:4px"><button class="btn small ghost" data-decide="${l.id}" data-to="approved">وافق هاتفياً</button><button class="btn small ghost" data-decide="${l.id}" data-to="declined">رفض</button></span>` : ''}</td>
@@ -343,13 +345,25 @@ export default async function job([id]) {
             ${field(type === 'labor' ? 'الساعات / الكمية' : 'الكمية', '<input name="qty" type="number" step="0.25" min="0.25" value="1" inputmode="decimal" required>', { req: true })}
             ${field('سعر الوحدة (ر.ع)', '<input name="unit_price" type="number" step="0.001" min="0" inputmode="decimal" required>', { req: true })}
           </div>
-          ${type === 'labor' ? field('الفني', `<select name="technician_id">${options(ctx.technicians.map((s) => [s.user_id, s.full_name]), j.technician_id, { empty: 'غير محدد' })}</select>`) : ''}
+          ${type === 'labor' ? `<div id="tech-box">${field('الفني', `<select name="technician_id">${options(ctx.technicians.map((s) => [s.user_id, s.full_name]), j.technician_id, { empty: 'غير محدد' })}</select>`)}</div>
+            <label class="row" style="gap:8px"><input type="checkbox" name="sublet" id="sublet" value="1" style="width:auto;min-height:0"> عمل خارجي تنفّذه ورشة أخرى</label>
+            <div class="grid form hidden" id="sublet-box" style="grid-template-columns:1fr 1fr">
+              ${field('الورشة الخارجية', `<select name="supplier_id">${options(suppliers.map((x) => [x.id, x.name]), '', { empty: 'اختر من الموردين' })}</select>`, { hint: suppliers.length ? '' : 'أضف الورشة أولاً في الموردين' })}
+              ${field('تكلفتها علينا للوحدة (ر.ع)', '<input name="sublet_cost" type="number" step="0.001" min="0" inputmode="decimal">')}
+            </div>` : ''}
           <p class="subtle" id="stock-hint"></p>`, async (data) => {
           const row = {
             job_id: j.id, type, description: data.description, qty: Number(data.qty), unit_price: Number(data.unit_price),
             technician_id: data.technician_id || null,
           };
           if (type === 'labor' && data.ref) row.service_id = data.ref;
+          if (type === 'labor' && data.sublet) {
+            if (!data.supplier_id) throw new Error('اختر الورشة الخارجية');
+            if (data.sublet_cost == null || Number(data.sublet_cost) < 0) throw new Error('اكتب تكلفة العمل الخارجي');
+            row.supplier_id = data.supplier_id;
+            row.unit_cost = Number(data.sublet_cost);
+            row.technician_id = null;
+          }
           if (type === 'part' && data.ref) {
             row.item_id = data.ref;
             row.unit_cost = Number(items.find((x) => x.id === data.ref)?.unit_cost || 0);
@@ -358,6 +372,11 @@ export default async function job([id]) {
           toast('أُضيف البند');
           reload();
         }, { submitLabel: 'أضف' });
+        const sub = d.querySelector('#sublet');
+        sub?.addEventListener('change', () => {
+          d.querySelector('#sublet-box').classList.toggle('hidden', !sub.checked);
+          d.querySelector('#tech-box').classList.toggle('hidden', sub.checked);
+        });
         const sel = d.querySelector('[name="ref"]');
         sel.addEventListener('change', () => {
           const x = list.find((r) => r.id === sel.value);

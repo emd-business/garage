@@ -38,7 +38,7 @@ export default async function purchases([tab]) {
   const suppliersTable = suppliers.length ? `<div class="table-wrap"><table>
       <thead><tr><th>المورد</th><th>الهاتف</th><th class="num">المشتريات</th><th class="num">المرتجعات</th><th class="num">المدفوع</th><th class="num">المستحق له</th><th><span class="hidden">إجراءات</span></th></tr></thead>
       <tbody>${suppliers.map((s) => `<tr><td><strong>${esc(s.name)}</strong></td><td><bdi class="ltr">${esc(s.phone || '')}</bdi></td>
-        <td class="num">${money(s.purchased)}</td><td class="num">${Number(s.returned) ? money(s.returned) : '—'}</td><td class="num">${money(s.paid)}</td>
+        <td class="num">${money(s.purchased)}${Number(s.sublet) ? `<br><span class="subtle">منها أعمال خارجية ${money(s.sublet)}</span>` : ''}</td><td class="num">${Number(s.returned) ? money(s.returned) : '—'}</td><td class="num">${money(s.paid)}</td>
         <td class="num">${Number(s.balance) > 0.0005 ? `<span class="badge warning">${money(s.balance)}</span>` : '—'}</td>
         <td><div class="row" style="gap:6px;flex-wrap:nowrap">${canPay ? `<button class="btn small teal" data-pay="${s.id}">سداد</button>` : ''}<a class="btn small ghost" href="#/statement/supplier/${s.id}" target="_blank" rel="noopener">كشف</a><button class="btn small ghost" data-edit-sup="${s.id}">تعديل</button></div></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لا يوجد موردون بعد.</p></div>';
