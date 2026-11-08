@@ -53,7 +53,9 @@ export default async function job([id]) {
   // ---- sections ----
   const stepper = `<div class="stepper" role="group" aria-label="مرحلة السيارة">${FLOW.map((s, i) => {
     const cur = FLOW.indexOf(j.status);
-    const allowed = j.status !== 'cancelled' && (ctx.can('owner', 'manager', 'reception') || (ctx.isTech && TECH_CAN.includes(s)));
+    // a delivered or cancelled job is closed; only the owner or a manager reopens it
+    const closed = ['delivered', 'cancelled'].includes(j.status);
+    const allowed = closed ? ctx.can('owner', 'manager') : (ctx.can('owner', 'manager', 'reception') || (ctx.isTech && TECH_CAN.includes(s)));
     return `<button type="button" data-status="${s}" aria-pressed="${s === j.status}" class="${i < cur ? 'done' : ''}" ${allowed && s !== j.status ? '' : 'disabled'}>${esc(STATUS[s].label)}</button>`;
   }).join('')}</div>`;
 

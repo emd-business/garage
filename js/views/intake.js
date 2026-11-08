@@ -57,6 +57,7 @@ export default async function intake() {
         ${v ? `<p class="row">${plateTag(v)} <strong>${esc(carName(v))}</strong> ${v.vin ? `<bdi class="subtle ltr">${esc(v.vin)}</bdi>` : ''}</p>`
     : `<div class="grid form">${vehicleFields()}</div>`}
       </section>
+      <div id="open-job"></div>
       <div id="warranty"></div>
       <section class="card stack">
         <h2>الاستلام</h2>
@@ -93,6 +94,11 @@ export default async function intake() {
           form.querySelector('#intake-preview').innerHTML = [...e.target.files].map((f) => `<span class="ph"><img src="${URL.createObjectURL(f)}" alt=""></span>`).join('');
         });
         if (picked.vehicle) {
+          // the car may already be in the workshop under another job order
+          db.get('job_orders', { vehicle_id: `eq.${picked.vehicle.id}`, status: 'not.in.(delivered,cancelled)', select: 'id,job_no,status', limit: 3 }).then((open) => {
+            if (!open.length) return;
+            stage.querySelector('#open-job').innerHTML = `<div class="notice warn" role="alert">هذه السيارة في الورشة الآن: ${open.map((o) => `<a href="#/job/${o.id}">أمر ${idn(o.job_no)}</a>`).join('، ')}. أضف الأعمال الجديدة على الأمر المفتوح بدل فتح أمر ثانٍ، إلا إن كانت زيارة منفصلة.</div>`;
+          }).catch(() => {});
           db.rpc('warranty_check', { p_vehicle: picked.vehicle.id }).then((w) => {
             if (!w || !w.length) return;
             stage.querySelector('#warranty').innerHTML = `<section class="card stack" style="border-color:var(--warning-ink)">
@@ -123,6 +129,7 @@ export default async function intake() {
               try {
                 vehicle = await db.insert('vehicles', { customer_id: customer.id, ...vehicleRow(d), odometer: d.odometer ? Number(d.odometer) : null });
               } catch (e) {
+                if (/vehicles_vin_unique/.test(e.message)) throw new Error('رقم الشاصي هذا مسجل لسيارة أخرى. ابحث عنه في أعلى الصفحة.');
                 if (/vehicles_plate_unique|duplicate key/.test(e.message)) throw new Error('هذه اللوحة مسجلة من قبل. ابحث عنها في أعلى الصفحة، واختر «مالك جديد» إن كانت السيارة قد بيعت.');
                 throw e;
               }

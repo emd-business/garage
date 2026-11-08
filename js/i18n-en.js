@@ -1,5 +1,10 @@
 // Arabic → English UI dictionary (generated from the app source; longest phrases are applied first)
 export default {
+"أضف الأعمال الجديدة على الأمر المفتوح بدل فتح أمر ثانٍ، إلا إن كانت زيارة منفصلة.": "Add the new work to the open job order instead of opening a second one, unless it is a separate visit.",
+"هذه السيارة في الورشة الآن:": "This car is in the workshop now:",
+"رقم الشاصي هذا مسجل لسيارة أخرى. ابحث عنه في أعلى الصفحة.": "This chassis number is registered to another car. Search for it above.",
+"الأمر مغلق. إعادة فتحه للمالك أو المدير فقط": "The job is closed. Only the owner or a manager can reopen it",
+"المتوفر في": "Available in",
 "للأمر فاتورة صادرة. احذف الفاتورة إن لم تُدفع، أو أصدر إشعاراً دائناً، ثم ألغِ الأمر": "This job has an issued invoice. Delete it if unpaid, or issue a credit note, then cancel the job",
 "أصدر الفاتورة قبل تسليم السيارة": "Issue the invoice before delivering the car",
 "هذه اللوحة مسجلة من قبل. ابحث عنها في أعلى الصفحة، واختر «مالك جديد» إن كانت السيارة قد بيعت.": "This plate is already registered. Search for it above and choose \"New owner\" if the car was sold.",
