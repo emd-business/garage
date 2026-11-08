@@ -180,6 +180,7 @@ export default async function job([id]) {
       ${!['delivered', 'cancelled'].includes(j.status) && (!inv || Number(inv.balance) > 0.0005) ? '<div><button type="button" class="btn small" id="deposit">عربون مقدّم</button></div>' : ''}
       ${inv ? `<div class="row" style="gap:8px">
           ${canCredit && creditLeft > 0.0005 ? '<button type="button" class="btn small" id="credit">إشعار دائن</button>' : ''}
+          ${!realPayments.length && !credits.length && ctx.can('owner', 'manager') ? '<button type="button" class="btn small danger" id="del-inv">احذف الفاتورة</button>' : ''}
           ${!credits.length ? `<button type="button" class="btn small" id="insurance">${inv.insurer_id ? 'تعديل التأمين' : 'مطالبة تأمين'}</button>` : ''}
           <button type="button" class="btn small ghost" id="xml-inv" title="ملف الفاتورة الإلكترونية بصيغة UBL لمزوّد فوترة">ملف XML للفوترة</button>
         </div>` : ''}
@@ -420,6 +421,10 @@ export default async function job([id]) {
       el.querySelector('#pay [name="payer"]')?.addEventListener('change', (e) => {
         el.querySelector('#pay [name="amount"]').value = Number(e.target.value === 'insurer' ? inv.insurer_balance : inv.customer_balance).toFixed(3);
       });
+      el.querySelector('#del-inv')?.addEventListener('click', () => openDialog('حذف الفاتورة', `<p>تُحذف الفاتورة رقم ${idn(inv.invoice_no)} وتُعكس قيودها${deposits.length ? '، ويعود العربون عربوناً يمكن ردّه أو استخدامه' : ''}. استخدمه لفاتورة صدرت بالخطأ أو لأمر سيُلغى.</p>`, async () => {
+        await db.rpc('delete_invoice', { p_invoice: inv.id });
+        toast('حُذفت الفاتورة'); reload();
+      }, { submitLabel: 'احذف', danger: true }));
       el.querySelector('#deposit')?.addEventListener('click', () => openDialog('عربون مقدّم', `
         <p class="muted">مبلغ يدفعه العميل قبل الفاتورة، مثل ثمن قطع تُطلب من الوكالة. يصدر له سند قبض الآن، ويُخصم تلقائياً من الفاتورة عند إصدارها.</p>
         <div class="grid form" style="grid-template-columns:1fr 1fr">

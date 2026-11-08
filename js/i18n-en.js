@@ -1,5 +1,15 @@
 // Arabic → English UI dictionary (generated from the app source; longest phrases are applied first)
 export default {
+"استخدمه لفاتورة صدرت بالخطأ أو لأمر سيُلغى.": "Use it for an invoice issued by mistake or a job that will be cancelled.",
+"ويعود العربون عربوناً يمكن ردّه أو استخدامه": "and the deposit becomes a deposit again that can be refunded or used",
+"وتُعكس قيودها": "and its entries are reversed",
+"على الفاتورة دفعات. أصدر إشعاراً دائناً بدل الحذف": "The invoice has payments. Issue a credit note instead of deleting",
+"على الفاتورة إشعار دائن ولا يمكن حذفها": "The invoice has a credit note and can't be deleted",
+"حذف الفاتورة للمالك أو المدير فقط": "Only the owner or a manager can delete an invoice",
+"احذف الفاتورة": "Delete invoice",
+"حذف الفاتورة": "Delete invoice",
+"حُذفت الفاتورة": "Invoice deleted",
+"تُحذف الفاتورة رقم": "Invoice no.",
 "مبلغ يدفعه العميل قبل الفاتورة، مثل ثمن قطع تُطلب من الوكالة. يصدر له سند قبض الآن، ويُخصم تلقائياً من الفاتورة عند إصدارها.": "An amount the customer pays before the invoice, such as for parts ordered from the dealer. A receipt is issued now, and it is deducted from the invoice automatically when issued.",
 "تُقسم الفاتورة: حصة على شركة التأمين، والباقي (التحمّل) على العميل. يظهر كل جزء في كشف حسابه.": "The invoice is split: a share for the insurance company and the rest (the excess) for the customer. Each part shows on its own statement.",
 "لا توجد شركات تأمين بعد. أضفها من «العملاء» بنوع «شركة تأمين»، ثم ارجع هنا.": "No insurance companies yet. Add one under Customers with type \"Insurance company\", then come back.",
