@@ -17,6 +17,7 @@ import appointments from './views/appointments.js';
 import purchases from './views/purchases.js';
 import expenses from './views/expenses.js';
 import cash from './views/cash.js';
+import { stocktake, reorder, countsheet } from './views/stock-tools.js';
 import reports from './views/reports.js';
 import pricing from './views/pricing.js';
 import accounting, { ledger, statement } from './views/accounting.js';
@@ -63,7 +64,7 @@ function navGroups() {
 
 const ROUTES = {
   '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, item: itemView, settings,
-  appointments, purchases, expenses, cash, reports, pricing, more: moreView, accounting, ledger, statement, admin,
+  appointments, purchases, expenses, cash, stocktake, reorder, countsheet, reports, pricing, more: moreView, accounting, ledger, statement, admin,
 };
 
 function parseRoute() {
@@ -133,13 +134,13 @@ async function route() {
   if (!ctx.garage || !ctx.role) return renderOnboarding();
   const { key, params } = parseRoute();
   const view = ROUTES[key];
-  const navKey = { item: 'inventory', customer: 'customers', ledger: 'accounting' }[key] || key;
+  const navKey = { item: 'inventory', stocktake: 'inventory', reorder: 'inventory', countsheet: 'inventory', customer: 'customers', ledger: 'accounting' }[key] || key;
   const navItem = NAV.find((n) => n.key === navKey);
   const allowed = key === 'print' || key === 'statement' || key === 'job' || key === 'more' || (navItem && canSee(navItem));
   if (!view || !allowed) { location.hash = `#/${homeFor(ctx.role)}`; return; }
   const seq = ++renderSeq;
 
-  if (key === 'print' || key === 'statement') {
+  if (key === 'print' || key === 'statement' || key === 'countsheet') {
     root.innerHTML = '<div class="skeleton" style="margin:24px"></div>';
     try {
       const out = await view(params);

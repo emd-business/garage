@@ -3,6 +3,7 @@ import { db } from '../api.js';
 import { esc, money, num, date, METHODS } from '../format.js';
 import { icon, toast, field, options, openDialog, busy } from '../ui.js';
 import { ctx } from '../state.js';
+import { uploadDoc, attachLink } from '../media.js';
 
 export const EXPENSE_CATS = ['إيجار', 'رواتب', 'كهرباء وماء', 'اتصالات وإنترنت', 'وقود', 'صيانة المعدات', 'مستهلكات الورشة', 'تسويق', 'رسوم حكومية', 'تأمين', 'أخرى'];
 
@@ -17,7 +18,13 @@ const expenseFields = (e = {}) => `<div class="grid form">
   ${field('ضريبة المدخلات (ر.ع)', `<input name="vat" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(e.vat ?? 0)}">`, { hint: 'إن كانت الفاتورة ضريبية' })}
   ${field('التاريخ', `<input name="expense_date" type="date" required value="${esc(e.expense_date || new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10))}">`, { req: true })}
   ${field('طريقة الدفع', `<select name="method">${options(Object.entries(METHODS), e.method || 'cash')}</select>`)}
+  ${field(e.attachment_url ? 'استبدل الإيصال' : 'صورة الإيصال أو PDF', '<input name="file" type="file" accept="image/*,application/pdf">', { hint: e.attachment_url ? 'يوجد إيصال مرفق. اختر ملفاً لاستبداله.' : 'اختياري، للرجوع إليه وللمراجعة الضريبية.' })}
   <datalist id="exp-cats">${EXPENSE_CATS.map((c) => `<option value="${c}">`).join('')}</datalist></div>`;
+const withFile = async (row, form) => {
+  const f = form.querySelector('[name=file]')?.files[0];
+  if (f) row.attachment_url = await uploadDoc(f, 'expenses');
+  return row;
+};
 const toRow = (d) => ({ category: d.category, description: d.description, amount: Number(d.amount), vat: Number(d.vat || 0), expense_date: d.expense_date, method: d.method });
 
 export default async function expenses([month]) {
@@ -42,8 +49,8 @@ export default async function expenses([month]) {
       </div>
       <div class="cols">
         <section class="card pad-0">${list.length ? `<div class="table-wrap"><table>
-          <thead><tr><th>التاريخ</th><th>البند</th><th>الوصف</th><th>الدفع</th><th class="num">المبلغ</th><th class="num">الضريبة</th><th><span class="hidden">إجراءات</span></th></tr></thead>
-          <tbody>${list.map((e) => `<tr><td>${esc(date(e.expense_date))}</td><td>${esc(e.category)}</td><td>${esc(e.description || '')}</td><td>${esc(METHODS[e.method])}</td>
+          <thead><tr><th>التاريخ</th><th>البند</th><th>الوصف</th><th>الدفع</th><th><span class="sr-only">الإيصال</span></th><th class="num">المبلغ</th><th class="num">الضريبة</th><th><span class="hidden">إجراءات</span></th></tr></thead>
+          <tbody>${list.map((e) => `<tr><td>${esc(date(e.expense_date))}</td><td>${esc(e.category)}</td><td>${esc(e.description || '')}</td><td>${esc(METHODS[e.method])}</td><td>${attachLink(e.attachment_url)}</td>
             <td class="num">${money(e.amount)}</td><td class="num">${Number(e.vat) ? money(e.vat) : '—'}</td>
             <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn small ghost" data-edit="${e.id}">تعديل</button><button class="btn small ghost icon-btn" data-del="${e.id}" aria-label="احذف">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لا توجد مصروفات مسجلة في هذا الشهر.</p><p class="subtle">سجّل الإيجار والرواتب والكهرباء وغيرها، فتظهر في التقارير وتُحسب منها تكلفة ساعة العمل.</p></div>'}</section>
@@ -52,12 +59,12 @@ export default async function expenses([month]) {
       </div>`,
     bind(el) {
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
-      el.querySelector('#add').addEventListener('click', () => openDialog('مصروف جديد', expenseFields(), async (d) => {
-        await db.insert('expenses', toRow(d)); toast('سُجّل المصروف'); reload();
+      el.querySelector('#add').addEventListener('click', () => openDialog('مصروف جديد', expenseFields(), async (d, form) => {
+        await db.insert('expenses', await withFile(toRow(d), form)); toast('سُجّل المصروف'); reload();
       }));
       el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
         const e = list.find((x) => x.id === b.dataset.edit);
-        openDialog('تعديل مصروف', expenseFields(e), async (d) => { await db.update('expenses', { id: `eq.${e.id}` }, toRow(d)); toast('حُفظ'); reload(); });
+        openDialog('تعديل مصروف', expenseFields(e), async (d, form) => { await db.update('expenses', { id: `eq.${e.id}` }, await withFile(toRow(d), form)); toast('حُفظ'); reload(); });
       }));
       el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => openDialog('حذف المصروف', '<p>سيُحذف هذا المصروف نهائياً.</p>', async () => {
         await db.remove('expenses', { id: `eq.${b.dataset.del}` }); reload();

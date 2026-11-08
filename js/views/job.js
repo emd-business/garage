@@ -3,8 +3,9 @@ import { idn, esc, money, num, round3, badge, STATUS, FLOW, METHODS, carName, pl
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
 import { waText } from '../templates.js';
+import { askSignature } from '../signature.js';
 import { plateTag, isLate } from './dashboard.js';
-import { uploadMany, photoGrid, photoPicker } from '../media.js';
+import { uploadMany, uploadBlob, photoGrid, photoPicker } from '../media.js';
 
 const APPROVAL = { pending: ['بانتظار العميل', 'warning'], approved: ['وافق العميل', 'success'], declined: ['رفضه العميل', 'danger'] };
 const CONDITION = { good: ['سليم', 'success'], attention: ['يحتاج انتباه', 'warning'], urgent: ['عاجل', 'danger'] };
@@ -246,7 +247,11 @@ export default async function job([id]) {
           <h1 class="row" style="gap:10px">أمر عمل ${idn(j.job_no)} ${badge(j.status)} ${isLate(j) ? '<span class="badge danger">متأخرة</span>' : ''}${ctx.multiBranch ? ` <span class="badge neutral">${esc(ctx.branchName(j.branch_id))}</span>` : ''}${j.comeback_of ? ` <a class="badge warning" href="#/job/${j.comeback_of}">عودة ضمن الضمان</a>` : ''}</h1>
           <p class="row" style="gap:10px">${plateTag(v)} <strong>${esc(carName(v))}</strong>${office ? ` · <a href="#/customer/${c.id}">${esc(c.name || '')}</a> ${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''}` : ''}</p>
         </div>
-        <a class="btn small" href="#/print/${j.id}/card" target="_blank" rel="noopener">${icon('print')} كرت الورشة</a>
+        <div class="row" style="gap:6px">
+          ${ctx.can('owner', 'manager', 'reception') && !['delivered', 'cancelled'].includes(j.status) ? `<button type="button" class="btn small ${j.intake_signature_url ? 'ghost' : 'teal'}" id="sign-intake">${j.intake_signature_url ? '✓ وقّع العميل' : 'توقيع العميل على الاستلام'}</button>` : ''}
+          ${office ? `<a class="btn small" href="#/print/${j.id}/intake" target="_blank" rel="noopener">${icon('print')} إيصال الاستلام</a>` : ''}
+          <a class="btn small" href="#/print/${j.id}/card" target="_blank" rel="noopener">${icon('print')} كرت الورشة</a>
+        </div>
       </div>
       ${nextHtml}
       ${stepper}
@@ -263,6 +268,15 @@ export default async function job([id]) {
         if (t.matches('input,select,textarea')) t.focus({ preventScroll: true }); else t.click();
       };
       el.querySelector('[data-next]')?.addEventListener('click', () => doStep(nextStep));
+      el.querySelector('#sign-intake')?.addEventListener('click', async (ev) => {
+        const blob = await askSignature('توقيع العميل على إيصال الاستلام', `يقرّ ${c.name || 'العميل'} بتسليم ${carName(v)} بالحالة المسجلة عند الاستلام.`);
+        if (!blob) return;
+        await busy(ev.currentTarget, async () => {
+          const url = await uploadBlob(blob, 'signatures', 'png', 'image/png');
+          await db.rpc('sign_intake', { p_job: j.id, p_url: url });
+          toast('حُفظ توقيع العميل'); reload();
+        });
+      });
       el.querySelector('[data-next-alt]')?.addEventListener('click', () => doStep(nextStep.alt));
       // hide the hint when this user can't do that step here
       if (nextStep && !nextStep.info) {

@@ -4,6 +4,9 @@ import { icon, toast, field, options, formData, busy } from '../ui.js';
 import { ctx } from '../state.js';
 import { plateTag } from './dashboard.js';
 import { uploadMany, photoPicker } from '../media.js';
+import { modelsFor, wireModels } from '../models.js';
+
+wireModels();
 
 export const DEFAULT_CHECKS = ['الإطار الاحتياطي', 'الرافعة والعدة', 'المفتاح الاحتياطي', 'المسجل والشاشة', 'خدوش ظاهرة', 'أغراض شخصية في السيارة'];
 
@@ -13,11 +16,12 @@ export function vehicleFields(v = {}) {
     ${field('حروف اللوحة', `<input name="plate_letters" value="${esc(v.plate_letters || '')}" placeholder="مثال: ا ب">`)}
     ${field('نوع اللوحة', `<select name="plate_type">${options([['private', 'خصوصي'], ['commercial', 'تجاري'], ['other', 'أخرى']], v.plate_type || 'private')}</select>`)}
     ${field('الشركة المصنعة', `<input name="make" list="makes" value="${esc(v.make || '')}" required>`, { req: true })}
-    ${field('الطراز', `<input name="model" value="${esc(v.model || '')}">`)}
+    ${field('الطراز', `<input name="model" list="models" autocomplete="off" value="${esc(v.model || '')}" placeholder="اختر من القائمة أو اكتبه">`)}
     ${field('سنة الصنع', `<input name="year" type="number" inputmode="numeric" min="1960" max="2030" value="${esc(v.year || '')}">`)}
     ${field('رقم الشاصي (VIN)', `<input name="vin" dir="ltr" maxlength="17" autocapitalize="characters" value="${esc(v.vin || '')}">`)}
     ${field('اللون', `<input name="color" value="${esc(v.color || '')}">`)}
-    <datalist id="makes">${MAKES.map((m) => `<option value="${esc(m)}">`).join('')}</datalist>`;
+    <datalist id="makes">${MAKES.map((m) => `<option value="${esc(m)}">`).join('')}</datalist>
+    <datalist id="models" data-models>${modelsFor(v.make).map((m) => `<option value="${esc(m)}">`).join('')}</datalist>`;
 }
 
 export function vehicleRow(d) {

@@ -82,7 +82,7 @@ export default async function inventory() {
   return {
     title: 'المخزون',
     html: `<div class="page-head"><div><h1>المخزون وقطع الغيار</h1><p class="lead">${ctx.multiBranch ? `${esc(ctx.branch?.name || '')} · ` : ''}${num(items.length)} صنف${low.length ? ` · ${num(low.length)} تحتاج إعادة طلب` : ''}</p></div>
-        ${canEdit ? `<button class="btn primary" id="add">${icon('plus')} صنف جديد</button>` : ''}</div>
+        <div class="row">${seeCost && low.some((it) => Number(it.reorder_level) > 0) ? `<a class="btn" href="#/reorder">${icon('cart')} إعادة الطلب <span class="badge warning">${num(low.filter((it) => Number(it.reorder_level) > 0).length)}</span></a>` : ''}${canEdit ? `<a class="btn" href="#/stocktake">${icon('book')} الجرد</a><button class="btn primary" id="add">${icon('plus')} صنف جديد</button>` : ''}</div></div>
       <div class="kpis">
         <div class="kpi"><span class="label">الأصناف</span><span class="value">${num(items.length)}</span></div>
         <div class="kpi ${low.length ? 'alert' : ''}"><span class="label">منخفضة أو نافدة</span><span class="value">${num(low.length)}</span></div>

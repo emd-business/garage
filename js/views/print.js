@@ -1,5 +1,5 @@
 import { db } from '../api.js';
-import { idn, esc, money, num, METHODS, carName, plate, date, amountWords } from '../format.js';
+import { idn, esc, money, num, METHODS, carName, plate, date, dateTime, amountWords } from '../format.js';
 import { icon } from '../ui.js';
 import { ctx } from '../state.js';
 import { computeTotals } from './job.js';
@@ -8,14 +8,14 @@ import { computeTotals } from './job.js';
 // [id, format]: format is 'a4', '80mm' or 'card' (workshop card for the technician, no prices);
 // without it the garage's chosen paper is used.
 export default async function printDoc([id, fmt, cnId]) {
-  const mode = ['a4', '80mm', 'card', 'credit'].includes(fmt) ? fmt : (ctx.garage.print_paper || 'a4');
+  const mode = ['a4', '80mm', 'card', 'credit', 'intake'].includes(fmt) ? fmt : (ctx.garage.print_paper || 'a4');
   if (mode !== 'card' && !ctx.can('owner', 'manager', 'reception', 'accountant')) throw new Error('ليس لديك صلاحية على الفواتير');
   const j = await db.one('job_orders', { id: `eq.${id}`, select: '*,vehicles(*),customers(*)' });
   if (!j) throw new Error('أمر العمل غير موجود');
   const [lines, inv] = await Promise.all([
     mode === 'card' && ctx.isTech ? db.rpc('job_lines_for_tech', { p_job: id }).then((ls) => (ls || []).filter((l) => !['pending', 'declined'].includes(l.approval_state)))
       : db.get('job_lines', { job_id: `eq.${id}`, order: 'type.desc,created_at' }).then((ls) => ls.filter((l) => l.approved !== false)),
-    mode === 'card' ? null : db.one('invoice_balances', { job_id: `eq.${id}` }),
+    mode === 'card' || mode === 'intake' ? null : db.one('invoice_balances', { job_id: `eq.${id}` }),
   ]);
   const payments = inv ? await db.get('payments', { invoice_id: `eq.${inv.id}`, order: 'paid_at' }) : [];
   const g = ctx.garage, v = j.vehicles || {}, c = j.customers || {};
@@ -28,7 +28,7 @@ export default async function printDoc([id, fmt, cnId]) {
   const bar = `<div class="print-bar">
       <button class="btn primary" id="do-print">${icon('print')} اطبع أو احفظ PDF</button>
       <span class="seg" role="group" aria-label="نوع الورق">
-        ${mode === 'card' || mode === 'credit' ? '' : [['a4', 'A4'], ['80mm', 'إيصال ٨٠ مم']].map(([k, t]) => `<a class="btn small ${mode === k ? 'teal' : ''}" href="#/print/${j.id}/${k}" ${mode === k ? 'aria-current="true"' : ''}>${t}</a>`).join('')}
+        ${mode === 'card' || mode === 'credit' || mode === 'intake' ? '' : [['a4', 'A4'], ['80mm', 'إيصال ٨٠ مم']].map(([k, t]) => `<a class="btn small ${mode === k ? 'teal' : ''}" href="#/print/${j.id}/${k}" ${mode === k ? 'aria-current="true"' : ''}>${t}</a>`).join('')}
       </span>
       <a class="btn" href="#/job/${j.id}">رجوع لأمر العمل</a>
     </div>`;
@@ -68,6 +68,44 @@ export default async function printDoc([id, fmt, cnId]) {
       ${Object.keys(ck).length ? `<div style="font-size:10.5pt"><strong>عند الاستلام:</strong> ${Object.entries(ck).filter(([, val]) => val).map(([k]) => esc(k)).join(' · ') || '—'}</div>` : ''}
       <div><strong>ملاحظات الفني:</strong><div class="write-lines"><span></span><span></span><span></span></div></div>
       <div class="sign"><div>الفني</div><div>فحص الجودة</div></div>
+    </article>` };
+  }
+
+  if (mode === 'intake') {
+    const ck = j.checklist || {};
+    const fuel = Number(j.fuel_level);
+    return { bind, html: `${bar}<article class="doc">
+      <header class="doc-head">
+        <div>
+          ${g.logo_url ? `<img src="${esc(g.logo_url)}" alt="" style="height:56px;margin-bottom:6px">` : ''}
+          <div class="g-name">${esc(g.name)}</div>
+          ${branchLine ? `<div class="g-meta">${esc(branchLine)}</div>` : ''}
+        </div>
+        <div class="g-meta" style="text-align:left">
+          ${(br?.address || g.address) ? `<div>${esc(br?.address || g.address)}</div>` : ''}
+          ${(br?.phone || g.phone) ? `<div>هاتف: <bdi class="ltr">${esc(br?.phone || g.phone)}</bdi></div>` : ''}
+          ${g.cr_number ? `<div>س.ت: <bdi class="ltr">${esc(g.cr_number)}</bdi></div>` : ''}
+        </div>
+      </header>
+      <div class="doc-title">إيصال استلام سيارة<small>Vehicle Receipt</small></div>
+      <div class="doc-grid">
+        <div><strong>أمر العمل:</strong> ${idn(j.job_no)}</div>
+        <div><strong>وقت الاستلام:</strong> ${esc(dateTime(j.received_at))}</div>
+        <div><strong>العميل:</strong> ${esc(c.name || '')}</div>
+        <div><strong>الهاتف:</strong> <bdi class="ltr">${esc(c.phone || '')}</bdi></div>
+        <div><strong>المركبة:</strong> ${esc(carName(v))}${v.color ? ` · ${esc(v.color)}` : ''}</div>
+        <div><strong>اللوحة:</strong> ${esc(plate(v))}</div>
+        ${v.vin ? `<div><strong>الشاصي:</strong> <bdi class="ltr">${esc(v.vin)}</bdi></div>` : ''}
+        ${j.odometer ? `<div><strong>العداد:</strong> ${num(j.odometer)} كم</div>` : ''}
+        ${j.promised_at ? `<div><strong>التسليم المتوقع:</strong> ${esc(dateTime(j.promised_at))}</div>` : ''}
+      </div>
+      ${Number.isFinite(fuel) && j.fuel_level != null ? `<div class="fuel-gauge"><strong>مستوى الوقود</strong><span class="gauge"><span style="width:${Math.max(0, Math.min(100, fuel))}%"></span></span><span>${num(fuel)}٪</span></div>` : ''}
+      ${j.complaint ? `<div><strong>طلب العميل:</strong> ${esc(j.complaint)}</div>` : ''}
+      ${Object.keys(ck).length ? `<div class="check-grid">${Object.entries(ck).map(([k, val]) => `<span class="${val ? 'yes' : 'no'}">${val ? '✓' : '✗'} ${esc(k)}</span>`).join('')}</div>` : ''}
+      ${(j.photos || []).length ? `<div class="doc-photos">${j.photos.slice(0, 4).map((u) => `<img src="${esc(u)}" alt="">`).join('')}</div>` : ''}
+      <div class="terms">أقرّ بتسليم السيارة الموصوفة أعلاه إلى ${esc(g.name)} بالحالة المبيّنة في هذا الإيصال، ولا تُنفَّذ أي أعمال إضافية إلا بموافقتي.${g.invoice_terms ? `<br>${esc(g.invoice_terms).replace(/\n/g, '<br>')}` : ''}</div>
+      <div class="sign"><div>${j.intake_signature_url ? `<img class="stamp" src="${esc(j.intake_signature_url)}" alt="توقيع العميل">` : ''}توقيع العميل${j.intake_signed_at ? `<br><span style="font-size:9pt;color:#5B6576">${esc(dateTime(j.intake_signed_at))}</span>` : ''}</div><div>${g.stamp_url ? `<img class="stamp" src="${esc(g.stamp_url)}" alt="">` : ''}الختم والمستلم</div></div>
+      <footer class="doc-foot"><span>احتفظ بهذا الإيصال لاستلام سيارتك</span><span class="row" style="gap:6px">بواسطة <img src="assets/logo.svg" alt="EMD Garage"></span></footer>
     </article>` };
   }
 

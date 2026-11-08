@@ -2,6 +2,7 @@ import { db } from '../api.js';
 import { esc, money, num, idn, date, round3, METHODS } from '../format.js';
 import { icon, toast, field, options, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
+import { uploadDoc, attachLink } from '../media.js';
 
 const todayStr = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
 
@@ -24,14 +25,14 @@ export default async function purchases([tab]) {
   const owed = suppliers.reduce((a, s) => a + Math.max(0, Number(s.balance)), 0);
 
   const purchasesTable = list.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>رقم</th><th>التاريخ</th><th>المورد</th><th>فاتورة المورد</th><th class="num">قبل الضريبة</th><th class="num">الضريبة</th><th class="num">الإجمالي</th></tr></thead>
+      <thead><tr><th>رقم</th><th>التاريخ</th><th>المورد</th><th>فاتورة المورد</th><th><span class="sr-only">المرفق</span></th><th class="num">قبل الضريبة</th><th class="num">الضريبة</th><th class="num">الإجمالي</th></tr></thead>
       <tbody>${list.map((p) => `<tr class="click" data-view="${p.id}"><td>${idn(p.purchase_no)}</td><td>${esc(date(p.purchase_date))}</td><td>${esc(p.suppliers?.name || '')}</td>
-        <td><bdi class="ltr">${esc(p.supplier_invoice_no || '')}</bdi></td><td class="num">${money(p.subtotal)}</td><td class="num">${money(p.vat)}</td><td class="num"><strong>${money(p.total)}</strong></td></tr>`).join('')}</tbody></table></div>`
+        <td><bdi class="ltr">${esc(p.supplier_invoice_no || '')}</bdi></td><td>${attachLink(p.attachment_url)}</td><td class="num">${money(p.subtotal)}</td><td class="num">${money(p.vat)}</td><td class="num"><strong>${money(p.total)}</strong></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لا توجد فواتير شراء بعد.</p><p class="subtle">سجّل فاتورة المورد فتزيد كميات الأصناف ويُحدَّث متوسط تكلفتها تلقائياً.</p></div>';
 
   const returnsTable = returns.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>رقم</th><th>التاريخ</th><th>المورد</th><th>السبب</th><th class="num">قبل الضريبة</th><th class="num">الضريبة</th><th class="num">الإجمالي</th></tr></thead>
-      <tbody>${returns.map((r) => `<tr><td>${idn(r.return_no)}</td><td>${esc(date(r.return_date))}</td><td>${esc(r.suppliers?.name || '')}</td><td>${esc(r.notes || '')}</td>
+      <thead><tr><th>رقم</th><th>التاريخ</th><th>المورد</th><th>السبب</th><th><span class="sr-only">المرفق</span></th><th class="num">قبل الضريبة</th><th class="num">الضريبة</th><th class="num">الإجمالي</th></tr></thead>
+      <tbody>${returns.map((r) => `<tr><td>${idn(r.return_no)}</td><td>${esc(date(r.return_date))}</td><td>${esc(r.suppliers?.name || '')}</td><td>${esc(r.notes || '')}</td><td>${attachLink(r.attachment_url)}</td>
         <td class="num">${money(r.subtotal)}</td><td class="num">${money(r.vat)}</td><td class="num"><strong>${money(r.total)}</strong></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لا توجد مرتجعات بعد.</p><p class="subtle">عند إرجاع قطعة معيبة أو زائدة للمورد، سجّلها مرتجعاً فتنقص من المخزون ومن المستحق له.</p></div>';
 
@@ -79,44 +80,55 @@ export default async function purchases([tab]) {
       el.querySelectorAll('[data-view]').forEach((tr) => tr.addEventListener('click', async () => {
         const p = list.find((x) => x.id === tr.dataset.view);
         const lines = await db.get('purchase_lines', { purchase_id: `eq.${p.id}`, select: 'qty,unit_cost,items(name,sku)' });
-        openDialog(`فاتورة شراء ${idn(p.purchase_no)}`, `<p class="muted">${esc(p.suppliers?.name || '')} · ${esc(date(p.purchase_date))}${p.supplier_invoice_no ? ` · فاتورة المورد <bdi class="ltr">${esc(p.supplier_invoice_no)}</bdi>` : ''}</p>
+        const dv = openDialog(`فاتورة شراء ${idn(p.purchase_no)}`, `<p class="muted">${esc(p.suppliers?.name || '')} · ${esc(date(p.purchase_date))}${p.supplier_invoice_no ? ` · فاتورة المورد <bdi class="ltr">${esc(p.supplier_invoice_no)}</bdi>` : ''}</p>
           <div class="table-wrap"><table><thead><tr><th>الصنف</th><th class="num">الكمية</th><th class="num">التكلفة</th><th class="num">المجموع</th></tr></thead>
           <tbody>${lines.map((l) => `<tr><td>${esc(l.items?.name || '')}</td><td class="num">${num(l.qty)}</td><td class="num">${money(l.unit_cost)}</td><td class="num">${money(l.qty * l.unit_cost)}</td></tr>`).join('')}</tbody></table></div>
           <div class="totals"><span>قبل الضريبة</span><span class="num">${money(p.subtotal)}</span><span>ضريبة المدخلات</span><span class="num">${money(p.vat)}</span><span class="grand">الإجمالي</span><span class="num grand">${money(p.total)}</span></div>
-          ${p.notes ? `<p>${esc(p.notes)}</p>` : ''}`, async () => true, { submitLabel: 'إغلاق' });
+          ${p.notes ? `<p>${esc(p.notes)}</p>` : ''}
+          <div class="row" style="gap:10px;align-items:center"><strong>فاتورة المورد:</strong> ${p.attachment_url ? attachLink(p.attachment_url) : '<span class="subtle">لا يوجد مرفق</span>'}
+            <label class="btn small" style="cursor:pointer">${p.attachment_url ? 'استبدل المرفق' : 'أرفق صورة أو PDF'}<input type="file" data-attach accept="image/*,application/pdf" class="hidden"></label></div>`, async () => true, { submitLabel: 'إغلاق' });
+        dv.querySelector('[data-attach]').addEventListener('change', async (e) => {
+          const f = e.target.files[0]; if (!f) return;
+          toast('جارٍ رفع المرفق…');
+          try { await db.rpc('attach_file', { p_kind: 'purchase', p_id: p.id, p_url: await uploadDoc(f, 'purchases') }); toast('أُرفق الملف'); dv.close(); reload(); } catch (err) { toast(err.message, 'error'); }
+        });
       }));
 
-      const docDialog = (ret) => {
+      const docDialog = (ret, draft = null) => {
         if (!items.length) { toast('أضف الأصناف في المخزون أولاً', 'error'); return; }
         const itemOpts = options(items.map((it) => [it.id, `${it.name}${it.sku ? ` (${it.sku})` : ''}`]), '', { empty: 'اختر الصنف' });
-        const lineHtml = () => `<div class="pline grid" style="grid-template-columns:minmax(0,2fr) 90px 110px 44px;gap:8px;align-items:end">
-            <label class="field"><span>الصنف</span><select data-l="item" required>${itemOpts}</select></label>
-            <label class="field"><span>الكمية</span><input data-l="qty" type="number" min="0.01" step="0.01" value="1" inputmode="decimal" required></label>
-            <label class="field"><span>تكلفة الوحدة</span><input data-l="cost" type="number" min="0" step="0.001" inputmode="decimal" required></label>
+        const lineHtml = (l = {}) => `<div class="pline grid" style="grid-template-columns:minmax(0,2fr) 90px 110px 44px;gap:8px;align-items:end">
+            <label class="field"><span>الصنف</span><select data-l="item" required>${l.item_id ? options(items.map((it) => [it.id, `${it.name}${it.sku ? ` (${it.sku})` : ''}`]), l.item_id, { empty: 'اختر الصنف' }) : itemOpts}</select></label>
+            <label class="field"><span>الكمية</span><input data-l="qty" type="number" min="0.01" step="0.01" value="${esc(l.qty ?? 1)}" inputmode="decimal" required></label>
+            <label class="field"><span>تكلفة الوحدة</span><input data-l="cost" type="number" min="0" step="0.001" inputmode="decimal" required value="${l.unit_cost != null ? esc(Number(l.unit_cost).toFixed(3)) : ''}"></label>
             <button type="button" class="btn ghost icon-btn" data-rm aria-label="احذف السطر">${icon('trash')}</button></div>`;
         const d = openDialog(ret ? 'مرتجع للمورد' : 'فاتورة شراء جديدة', `
           ${ret ? '<p class="muted">تنقص الكميات من مخزون هذا الفرع، وينقص المستحق للمورد، وتُعكس ضريبة المدخلات.</p>' : ''}
           <div class="grid form" style="grid-template-columns:1fr 1fr">
-            ${field('المورد', `<select name="supplier" required>${options(suppliers.map((s) => [s.id, s.name]), '', { empty: 'اختر المورد' })}</select>`, { req: true })}
+            ${field('المورد', `<select name="supplier" required>${options(suppliers.map((s) => [s.id, s.name]), draft?.supplier || '', { empty: 'اختر المورد' })}</select>`, { req: true })}
             ${ret ? field('السبب', '<input name="reason" placeholder="مثال: قطعة معيبة">') : field('رقم فاتورة المورد', '<input name="invoice_no" dir="ltr">')}
             ${field('التاريخ', `<input name="date" type="date" value="${todayStr()}">`)}
           </div>
-          <div id="plines" class="stack" style="gap:10px">${lineHtml()}</div>
+          <div id="plines" class="stack" style="gap:10px">${draft?.lines?.length ? draft.lines.map(lineHtml).join('') : lineHtml()}</div>
           <button type="button" class="btn small" id="add-line" style="align-self:flex-start">${icon('plus')} سطر</button>
           <div class="totals"><span>قبل الضريبة</span><span class="num" id="p-sub">${money(0)}</span></div>
           <label class="field"><span>${ret ? 'ضريبة المدخلات المعكوسة (ر.ع)' : 'ضريبة المدخلات (ر.ع)'}</span><span class="row" style="flex-wrap:nowrap"><input name="vat" type="number" step="0.001" min="0" inputmode="decimal" value="0"><button type="button" class="btn small" id="vat5">${num(ctx.garage.vat_rate)}٪</button></span></label>
-          ${ret ? '' : field('ملاحظات', '<input name="notes">')}`, async (data, form) => {
+          ${ret ? '' : field('ملاحظات', `<input name="notes" value="${draft ? 'طلب من صفحة إعادة الطلب' : ''}">`)}
+          ${field(ret ? 'مرفق (إشعار المورد)' : 'صورة فاتورة المورد أو PDF', '<input name="file" type="file" accept="image/*,application/pdf">', { hint: 'اختياري. يُحفظ مع الفاتورة للرجوع إليه.' })}`, async (data, form) => {
+          const file = form.querySelector('[name=file]').files[0];
           const lines = [...form.querySelectorAll('.pline')].map((r) => ({
             item_id: r.querySelector('[data-l=item]').value, qty: Number(r.querySelector('[data-l=qty]').value), unit_cost: Number(r.querySelector('[data-l=cost]').value),
           })).filter((l) => l.item_id);
           if (!lines.length) throw new Error('أضف صنفاً واحداً على الأقل');
           if (ret) {
             const r = await db.rpc('post_purchase_return', { p_supplier: data.supplier, p_purchase: null, p_date: data.date, p_vat: Number(data.vat || 0), p_lines: lines, p_notes: data.reason });
+            if (file) await db.rpc('attach_file', { p_kind: 'purchase_return', p_id: r.id, p_url: await uploadDoc(file, 'purchases') }).catch((e) => toast(`سُجّل المرتجع لكن تعذّر رفع المرفق: ${e.message}`, 'error'));
             toast(`سُجّل المرتجع ${idn(r.return_no)} ونقصت الكميات من المخزون`);
             location.hash = '#/purchases/returns';
             return;
           }
           const p = await db.rpc('post_purchase', { p_supplier: data.supplier, p_invoice_no: data.invoice_no, p_date: data.date, p_vat: Number(data.vat || 0), p_lines: lines, p_notes: data.notes });
+          if (file) await db.rpc('attach_file', { p_kind: 'purchase', p_id: p.id, p_url: await uploadDoc(file, 'purchases') }).catch((e) => toast(`سُجّلت الفاتورة لكن تعذّر رفع المرفق: ${e.message}`, 'error'));
           toast(`سُجّلت فاتورة الشراء ${idn(p.purchase_no)} وأُضيفت الكميات للمخزون`);
           reload();
         }, { submitLabel: ret ? 'سجّل المرتجع' : 'سجّل الفاتورة' });
@@ -136,7 +148,12 @@ export default async function purchases([tab]) {
         d.querySelector('#add-line').addEventListener('click', () => { box.insertAdjacentHTML('beforeend', lineHtml()); });
         d.querySelector('#vat5').addEventListener('click', () => { d.querySelector('[name=vat]').value = round3(subtotal() * Number(ctx.garage.vat_rate) / 100).toFixed(3); });
         d.style.maxWidth = '720px';
+        if (draft) d.querySelector('#p-sub').textContent = money(subtotal());
       };
+      // arriving from the reorder page with a prepared order
+      let draft = null;
+      try { draft = JSON.parse(sessionStorage.getItem('emd-po-draft') || 'null'); sessionStorage.removeItem('emd-po-draft'); } catch { draft = null; }
+      if (draft && suppliers.length) docDialog(false, draft);
       el.querySelector('#new-pur').addEventListener('click', () => docDialog(false));
       el.querySelector('#new-ret').addEventListener('click', () => docDialog(true));
     },

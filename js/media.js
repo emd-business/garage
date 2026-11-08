@@ -35,6 +35,36 @@ export async function uploadImage(file, kind = 'photos') {
   return `${SUPABASE_URL}/storage/v1/object/public/garage/${path}`;
 }
 
+// Raw upload of an already-prepared blob (signatures, PDF files)
+export async function uploadBlob(blob, kind, ext, type) {
+  const path = `${ctx.garage.id}/${kind}/${crypto.randomUUID()}.${ext}`;
+  const token = auth.session && auth.session.access_token;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/garage/${path}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': type, 'x-upsert': 'false' },
+    body: blob,
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(/exceeded|too large/i.test(t) ? 'الملف كبير جداً (الحد ٨ ميغابايت)' : 'تعذّر رفع الملف');
+  }
+  return `${SUPABASE_URL}/storage/v1/object/public/garage/${path}`;
+}
+
+// A receipt or supplier invoice: photos are compressed, PDF files go as they are
+export async function uploadDoc(file, kind = 'docs') {
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    if (file.size > 8 * 1024 * 1024) throw new Error('الملف كبير جداً (الحد ٨ ميغابايت)');
+    return uploadBlob(file, kind, 'pdf', 'application/pdf');
+  }
+  return uploadImage(file, kind);
+}
+
+// Link to an attachment: a thumbnail for photos, a label for PDF
+export const attachLink = (url) => (!url ? '' : /\.pdf$/i.test(url)
+  ? `<a class="attach pdf" href="${esc(url)}" target="_blank" rel="noopener">PDF</a>`
+  : `<a class="attach" href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="المرفق" loading="lazy"></a>`);
+
 export async function uploadMany(files, kind) {
   const out = [];
   for (const f of files) out.push(await uploadImage(f, kind));
