@@ -320,3 +320,13 @@ html[dir="ltr"] body { font-family: "IBM Plex Sans Arabic", Inter, system-ui, sa
 html[lang="en"] .doc-title small { display: none; }
 
 #offline-bar { position: sticky; top: 0; z-index: 60; background: var(--warning-soft); color: var(--warning-ink); padding: 10px 16px; font-size: 14px; font-weight: 600; text-align: center; border-bottom: 1px solid var(--warning-ink); }
+/* spare-part fitment rows */
+.fits { border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fits legend { font-weight: 600; padding: 0 6px; }
+.fits p { margin: 0; }
+#fit-rows { display: flex; flex-direction: column; gap: 8px; }
+.fit-row { display: grid; grid-template-columns: 1.3fr 1.2fr 0.9fr 0.9fr auto; gap: 6px; align-items: center; }
+.fit-row input { min-width: 0; }
+@media (max-width: 560px) { .fit-row { grid-template-columns: 1fr 1fr auto; } .fit-row [data-fit="year_from"] { grid-column: 1; } .fit-row [data-fit="year_to"] { grid-column: 2; } .fit-row [data-fit-del] { grid-row: 1 / span 2; grid-column: 3; } }
+svg.i-car { width: 16px; height: 16px; vertical-align: -3px; flex: none; }
+td .fit-line { display: inline-block; min-width: 140px; }

@@ -1,5 +1,5 @@
 import { db } from '../api.js';
-import { esc, money, num, idn, dateTime, date } from '../format.js';
+import { esc, money, num, idn, dateTime, date, MAKES, CONDITION, fitsText } from '../format.js';
 import { icon, toast, field, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
 
@@ -9,8 +9,17 @@ const stockBadge = (it) => {
   return '<span class="badge success">متوفر</span>';
 };
 
+const fitRow = (f = {}) => `<div class="fit-row">
+    <input data-fit="make" list="makes" value="${esc(f.make || '')}" placeholder="الشركة" aria-label="الشركة">
+    <input data-fit="model" value="${esc(f.model || '')}" placeholder="الموديل" aria-label="الموديل">
+    <input data-fit="year_from" type="number" min="1950" max="2100" inputmode="numeric" value="${esc(f.year_from || '')}" placeholder="من سنة" aria-label="من سنة">
+    <input data-fit="year_to" type="number" min="1950" max="2100" inputmode="numeric" value="${esc(f.year_to || '')}" placeholder="إلى سنة" aria-label="إلى سنة">
+    <button type="button" class="btn small ghost" data-fit-del aria-label="احذف السيارة">${icon('trash')}</button>
+  </div>`;
+
 const itemFields = (it = {}) => `
   ${field('اسم الصنف', `<input name="name" required value="${esc(it.name || '')}">`, { req: true, cls: 'span-all' })}
+  ${field('حالة القطعة', `<select name="condition">${Object.entries(CONDITION).map(([k, [t]]) => `<option value="${k}" ${(it.condition || 'new') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
   ${field('رمز الصنف', `<input name="sku" dir="ltr" value="${esc(it.sku || '')}">`)}
   ${field('الفئة', `<input name="category" list="cats" value="${esc(it.category || '')}">`)}
   ${field('مكان التخزين', `<input name="location" value="${esc(it.location || '')}" placeholder="مثال: رف A2">`)}
@@ -20,9 +29,35 @@ const itemFields = (it = {}) => `
   ${field('الضمان (يوم)', `<input name="warranty_days" type="number" step="1" min="0" inputmode="numeric" value="${esc(it.warranty_days ?? 0)}">`)}
   ${field('رمز التصنيف الجمركي HS', `<input name="hs_code" dir="ltr" inputmode="numeric" pattern="[0-9]{6,12}" value="${esc(it.hs_code || '')}" placeholder="870830">`, { hint: 'للفوترة الإلكترونية، من ٦ إلى ١٢ رقماً' })}
   ${field('حد إعادة الطلب', `<input name="reorder_level" type="number" step="1" min="0" inputmode="numeric" value="${esc(it.reorder_level ?? 0)}">`, { hint: 'ينبّهك النظام عند الوصول إليه' })}
+  <fieldset class="span-all fits"><legend>السيارات المناسبة لهذه القطعة</legend>
+    <p class="subtle">اتركها فارغة إن كانت القطعة تناسب كل السيارات. الموديل والسنوات اختيارية.</p>
+    <div id="fit-rows">${(it.fits && it.fits.length ? it.fits : [{}]).map(fitRow).join('')}</div>
+    <button type="button" class="btn small" id="fit-add">${icon('plus')} سيارة أخرى</button>
+  </fieldset>
+  <datalist id="makes">${MAKES.map((m) => `<option value="${m}">`).join('')}</datalist>
   <datalist id="cats">${['زيوت', 'فلاتر', 'فرامل', 'كهرباء', 'تعليق', 'إطارات', 'تبريد', 'محرك', 'إكسسوارات'].map((c) => `<option value="${c}">`).join('')}</datalist>`;
 
-const toRow = (d) => ({
+// the vehicle rows typed in the dialog
+const readFits = (dlg) => [...dlg.querySelectorAll('.fit-row')].map((r) => {
+  const v = (k) => r.querySelector(`[data-fit="${k}"]`).value.trim();
+  const f = { make: v('make'), model: v('model'), year_from: Number(v('year_from')) || null, year_to: Number(v('year_to')) || null };
+  if (f.year_from && f.year_to && f.year_from > f.year_to) [f.year_from, f.year_to] = [f.year_to, f.year_from];
+  return f;
+}).filter((f) => f.make);
+const bindFits = (dlg) => {
+  dlg.querySelector('#fit-add').addEventListener('click', () => {
+    dlg.querySelector('#fit-rows').insertAdjacentHTML('beforeend', fitRow());
+    dlg.querySelector('.fit-row:last-child [data-fit="make"]').focus();
+  });
+  dlg.querySelector('#fit-rows').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fit-del]'); if (!b) return;
+    const rows = dlg.querySelectorAll('.fit-row');
+    if (rows.length > 1) b.closest('.fit-row').remove(); else rows[0].querySelectorAll('input').forEach((i) => { i.value = ''; });
+  });
+};
+
+const toRow = (d, dlg) => ({
+  condition: d.condition || 'new', fits: readFits(dlg),
   name: d.name, sku: d.sku, category: d.category, location: d.location,
   unit_cost: Number(d.unit_cost || 0), sell_price: Number(d.sell_price || 0), reorder_level: Number(d.reorder_level || 0), warranty_days: Number(d.warranty_days || 0),
   hs_code: (d.hs_code || '').replace(/\D/g, '') || null,
@@ -53,31 +88,40 @@ export default async function inventory() {
         <div class="kpi ${low.length ? 'alert' : ''}"><span class="label">منخفضة أو نافدة</span><span class="value">${num(low.length)}</span></div>
         ${seeCost ? `<div class="kpi"><span class="label">قيمة المخزون بالتكلفة</span><span class="value">${money(value)}</span></div>` : ''}
       </div>
-      <input id="q" type="search" placeholder="ابحث باسم الصنف أو رمزه" aria-label="بحث في المخزون">
+      <div class="row" style="gap:10px">
+        <input id="q" type="search" placeholder="ابحث باسم الصنف أو رمزه أو السيارة" aria-label="بحث في المخزون" style="flex:1 1 240px">
+        <select id="cond" aria-label="حالة القطعة" style="flex:0 0 auto;width:auto"><option value="">كل القطع</option>${Object.entries(CONDITION).map(([k, [t]]) => `<option value="${k}">${t} فقط</option>`).join('')}</select>
+      </div>
       <section class="card pad-0">${items.length ? `<div class="table-wrap"><table>
         <thead><tr><th>الصنف</th><th>الفئة</th><th>المكان</th><th class="num">${ctx.multiBranch ? 'في هذا الفرع' : 'الكمية'}</th>${ctx.multiBranch ? '<th class="num">كل الفروع</th>' : ''}<th>الحالة</th>${seeCost ? '<th class="num">التكلفة</th>' : ''}<th class="num">سعر البيع</th>${canEdit ? '<th><span class="hidden">إجراءات</span></th>' : ''}</tr></thead>
-        <tbody>${items.map((it) => `<tr data-name="${esc(`${it.name} ${it.sku || ''}`.toLowerCase())}"><td><a href="#/item/${it.id}"><strong>${esc(it.name)}</strong></a>${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}</td>
+        <tbody>${items.map((it) => `<tr data-cond="${esc(it.condition || 'new')}" data-name="${esc(`${it.name} ${it.sku || ''} ${fitsText(it.fits)}`.toLowerCase())}"><td><a href="#/item/${it.id}"><strong>${esc(it.name)}</strong></a>${it.condition && it.condition !== 'new' ? ` <span class="badge ${CONDITION[it.condition][1]}">${CONDITION[it.condition][0]}</span>` : ''}${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}${(it.fits || []).length ? `<br><span class="subtle fit-line">${icon('car')} ${esc(fitsText(it.fits))}</span>` : ''}</td>
           <td>${esc(it.category || '')}</td><td>${esc(it.location || '')}</td><td class="num">${num(it.qty)}</td>${ctx.multiBranch ? `<td class="num subtle">${num(it.total)}</td>` : ''}<td>${stockBadge(it)}</td>
           ${seeCost ? `<td class="num">${money(it.unit_cost)}</td>` : ''}<td class="num">${money(it.sell_price)}</td>
           ${canEdit ? `<td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn small" data-adjust="${it.id}">الكمية</button>${ctx.multiBranch && !ctx.branchLocked ? `<button class="btn small" data-move="${it.id}">تحويل</button>` : ''}<button class="btn small ghost" data-edit="${it.id}">تعديل</button></div></td>` : ''}</tr>`).join('')}</tbody></table></div>`
     : `<div class="empty"><p>لا توجد أصناف بعد.</p>${canEdit ? '<p class="subtle">أضف قطع الغيار التي تبيعها، فتُخصم تلقائياً عند صرفها لأمر عمل.</p>' : ''}</div>`}</section>`,
     bind(el) {
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
-      el.querySelector('#q').addEventListener('input', (e) => {
-        const t = e.target.value.trim().toLowerCase();
-        el.querySelectorAll('tr[data-name]').forEach((tr) => tr.classList.toggle('hidden', !!t && !tr.dataset.name.includes(t)));
+      const filter = () => {
+        const t = el.querySelector('#q').value.trim().toLowerCase(), c = el.querySelector('#cond').value;
+        el.querySelectorAll('tr[data-name]').forEach((tr) => tr.classList.toggle('hidden', (!!t && !tr.dataset.name.includes(t)) || (!!c && tr.dataset.cond !== c)));
+      };
+      el.querySelector('#q').addEventListener('input', filter);
+      el.querySelector('#cond').addEventListener('change', filter);
+      el.querySelector('#add')?.addEventListener('click', () => {
+        const dlg = openDialog('صنف جديد', `<div class="grid form">${itemFields()}</div>`, async (d) => {
+          const it = await db.insert('items', { ...toRow(d, dlg), qty: Number(d.qty || 0) });
+          if (Number(d.qty) > 0) await db.insert('stock_movements', { item_id: it.id, qty: Number(d.qty), reason: 'رصيد افتتاحي' });
+          toast('أُضيف الصنف'); reload();
+        });
+        bindFits(dlg);
       });
-      el.querySelector('#add')?.addEventListener('click', () => openDialog('صنف جديد', `<div class="grid form">${itemFields()}</div>`, async (d) => {
-        const it = await db.insert('items', { ...toRow(d), qty: Number(d.qty || 0) });
-        if (Number(d.qty) > 0) await db.insert('stock_movements', { item_id: it.id, qty: Number(d.qty), reason: 'رصيد افتتاحي' });
-        toast('أُضيف الصنف'); reload();
-      }));
       el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
         const it = items.find((x) => x.id === b.dataset.edit);
-        openDialog('تعديل الصنف', `<div class="grid form">${itemFields(it)}</div>`, async (d) => {
-          await db.update('items', { id: `eq.${it.id}` }, toRow(d));
+        const dlg = openDialog('تعديل الصنف', `<div class="grid form">${itemFields(it)}</div>`, async (d) => {
+          await db.update('items', { id: `eq.${it.id}` }, toRow(d, dlg));
           toast('حُفظ الصنف'); reload();
         });
+        bindFits(dlg);
       }));
       el.querySelectorAll('[data-adjust]').forEach((b) => b.addEventListener('click', () => {
         const it = items.find((x) => x.id === b.dataset.adjust);
@@ -129,7 +173,8 @@ export async function itemView([id]) {
   return {
     title: it.name,
     html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/inventory" class="subtle">المخزون</a><h1>${esc(it.name)}</h1>
-        <p class="muted">${[it.sku && `<bdi class="ltr">${esc(it.sku)}</bdi>`, it.category && esc(it.category), it.location && `المكان: ${esc(it.location)}`].filter(Boolean).join(' · ')}</p></div>${stockBadge(it)}</div>
+        <p class="muted">${[CONDITION[it.condition || 'new'] && `<span class="badge ${CONDITION[it.condition || 'new'][1]}">${CONDITION[it.condition || 'new'][0]}</span>`, it.sku && `<bdi class="ltr">${esc(it.sku)}</bdi>`, it.category && esc(it.category), it.location && `المكان: ${esc(it.location)}`].filter(Boolean).join(' · ')}</p>
+        <p>${icon('car')} ${(it.fits || []).length ? `تناسب: ${esc(fitsText(it.fits))}` : '<span class="subtle">تناسب كل السيارات</span>'}</p></div>${stockBadge(it)}</div>
       <div class="kpis">
         <div class="kpi"><span class="label">${ctx.multiBranch ? 'الكمية في كل الفروع' : 'الكمية الحالية'}</span><span class="value">${num(it.qty)}</span></div>
         ${stock.map((s) => `<div class="kpi"><span class="label">${esc(ctx.branchName(s.branch_id))}</span><span class="value">${num(s.qty)}</span></div>`).join('')}

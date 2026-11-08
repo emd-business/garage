@@ -145,6 +145,23 @@ export function waLink(phone, text) {
   return `https://wa.me/${n}?text=${encodeURIComponent(text)}`;
 }
 
+// Spare parts: condition and the vehicles a part fits
+export const CONDITION = { new: ['جديد', 'success'], used: ['مستعمل', 'warning'], refurbished: ['مجدَّد', 'neutral'] };
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+export function fitText(f) {
+  // years kept left-to-right inside Arabic text (Unicode isolate marks)
+  const yrs = f.year_from || f.year_to ? ` \u2066${f.year_from || '…'}–${f.year_to || '…'}\u2069` : '';
+  return `${f.make || ''}${f.model ? ` ${f.model}` : ''}${yrs}`.trim();
+}
+export const fitsText = (fits) => (fits || []).map(fitText).join('، ');
+// true when the part is listed for this vehicle (make, and model and year when given)
+export function fitsVehicle(fits, v) {
+  if (!v || !(fits || []).length) return false;
+  return fits.some((f) => norm(f.make) === norm(v.make)
+    && (!f.model || !v.model || norm(v.model).includes(norm(f.model)) || norm(f.model).includes(norm(v.model)))
+    && (!v.year || ((!f.year_from || Number(v.year) >= Number(f.year_from)) && (!f.year_to || Number(v.year) <= Number(f.year_to)))));
+}
+
 export const MAKES = ['تويوتا', 'نيسان', 'هيونداي', 'كيا', 'ميتسوبيشي', 'هوندا', 'مازدا', 'لكزس', 'إيسوزو', 'سوزوكي',
   'شيفروليه', 'جي إم سي', 'فورد', 'دودج', 'جيب', 'كرايسلر', 'كاديلاك', 'لاند روفر', 'رنج روفر', 'مرسيدس',
   'بي إم دبليو', 'أودي', 'فولكس فاجن', 'بورشه', 'إنفينيتي', 'جينيسيس', 'شيري', 'جيلي', 'إم جي', 'هافال',

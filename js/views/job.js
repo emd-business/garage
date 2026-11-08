@@ -1,5 +1,5 @@
 import { db } from '../api.js';
-import { idn, esc, money, num, round3, badge, STATUS, FLOW, METHODS, carName, plate, dateTime, toLocalInput, fromLocalInput, waLink } from '../format.js';
+import { idn, esc, money, num, round3, badge, STATUS, FLOW, METHODS, carName, plate, dateTime, toLocalInput, fromLocalInput, waLink, CONDITION as PART_COND, fitsVehicle, fitsText } from '../format.js';
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
 import { plateTag, isLate } from './dashboard.js';
@@ -32,7 +32,7 @@ export default async function job([id]) {
   const [lines, services, items, inv, inspection, time] = await Promise.all([
     office ? db.get('job_lines', { job_id: `eq.${id}`, order: 'created_at' }) : db.rpc('job_lines_for_tech', { p_job: id }),
     editLines ? db.get('services', { active: 'eq.true', order: 'name' }) : [],
-    editLines ? db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,sell_price,unit_cost,item_stock(branch_id,qty)' })
+    editLines ? db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,sell_price,unit_cost,condition,fits,item_stock(branch_id,qty)' })
       .then((its) => its.map((it) => (ctx.multiBranch ? { ...it, qty: (it.item_stock || []).find((s) => s.branch_id === j.branch_id)?.qty ?? 0 } : it))) : [],
     office ? db.one('invoice_balances', { job_id: `eq.${id}` }) : null,
     db.get('inspection_items', { job_id: `eq.${id}`, order: 'created_at' }).catch(() => []),
@@ -310,7 +310,14 @@ export default async function job([id]) {
         const list = type === 'labor' ? services : items;
         const pick = type === 'labor'
           ? field('من قائمة الخدمات', `<select name="ref">${options(services.map((s) => [s.id, `${s.name} · ${num(s.std_hours)} ساعة`]), '', { empty: 'خدمة أخرى' })}</select>`)
-          : field('الصنف من المخزون', `<select name="ref">${options(items.map((it) => [it.id, `${it.name}${it.sku ? ` (${it.sku})` : ''} · متوفر ${num(it.qty)}`]), '', { empty: 'قطعة من خارج المخزون' })}</select>`);
+          : (() => {
+            // parts listed for this car first, then parts for any car; parts for other cars last
+            const rank = (it) => (fitsVehicle(it.fits, v) ? 0 : (it.fits || []).length ? 2 : 1);
+            const label = (it) => `${it.name}${it.condition && it.condition !== 'new' ? ` (${PART_COND[it.condition][0]})` : ''}${it.sku ? ` · ${it.sku}` : ''} · متوفر ${num(it.qty)}`;
+            const grp = (r, t) => { const l = items.filter((it) => rank(it) === r); return l.length ? `<optgroup label="${t}">${l.map((it) => `<option value="${it.id}">${esc(label(it))}</option>`).join('')}</optgroup>` : ''; };
+            return field('الصنف من المخزون', `<select name="ref"><option value="">قطعة من خارج المخزون</option>
+              ${grp(0, `تناسب ${carName(v)}`)}${grp(1, 'تناسب كل السيارات')}${grp(2, 'لسيارات أخرى')}</select>`);
+          })();
         const d = openDialog(type === 'labor' ? 'إضافة عمالة' : 'إضافة قطعة', `
           ${pick}
           ${field('الوصف', '<input name="description" required>', { req: true })}
@@ -337,13 +344,14 @@ export default async function job([id]) {
         sel.addEventListener('change', () => {
           const x = list.find((r) => r.id === sel.value);
           if (!x) return;
-          d.querySelector('[name="description"]').value = x.name;
+          d.querySelector('[name="description"]').value = x.condition && x.condition !== 'new' ? `${x.name} (${PART_COND[x.condition][0]})` : x.name;
           if (type === 'labor') {
             const price = Number(x.price) > 0 ? Number(x.price) : Number(x.std_hours) * Number(g.labor_rate);
             d.querySelector('[name="unit_price"]').value = price.toFixed(3);
           } else {
             d.querySelector('[name="unit_price"]').value = Number(x.sell_price).toFixed(3);
-            d.querySelector('#stock-hint').textContent = Number(x.qty) <= 0 ? 'تنبيه: الصنف نافد في المخزون، وستصبح الكمية بالسالب.' : `المتوفر ${num(x.qty)}`;
+            const fitNote = (x.fits || []).length && !fitsVehicle(x.fits, v) ? ` · تنبيه: هذه القطعة مسجّلة لـ ${fitsText(x.fits)}` : '';
+            d.querySelector('#stock-hint').textContent = (Number(x.qty) <= 0 ? 'تنبيه: الصنف نافد في المخزون، وستصبح الكمية بالسالب.' : `المتوفر ${num(x.qty)}`) + fitNote;
           }
         });
       }));
