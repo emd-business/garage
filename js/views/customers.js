@@ -9,7 +9,7 @@ const customerFields = (c = {}) => `
   ${field('الاسم', `<input name="name" required value="${esc(c.name || '')}">`, { req: true })}
   ${field('الهاتف', `<input name="phone" type="tel" dir="ltr" value="${esc(c.phone || '')}">`)}
   ${field('البريد', `<input name="email" type="email" dir="ltr" value="${esc(c.email || '')}">`)}
-  ${field('النوع', `<select name="customer_type">${options([['individual', 'فرد'], ['company', 'شركة']], c.customer_type || 'individual')}</select>`)}
+  ${field('النوع', `<select name="customer_type">${options([['individual', 'فرد'], ['company', 'شركة'], ['insurance', 'شركة تأمين']], c.customer_type || 'individual')}</select>`)}
   ${field('الرقم الضريبي', `<input name="vat_number" dir="ltr" value="${esc(c.vat_number || '')}">`, { hint: 'للشركات المسجلة في الضريبة' })}
   ${field('ملاحظات', `<textarea name="notes">${esc(c.notes || '')}</textarea>`)}`;
 
@@ -36,7 +36,7 @@ export default async function customers() {
           bal.forEach((b) => { owed[b.customer_id] = (owed[b.customer_id] || 0) + Number(b.balance); });
           list.innerHTML = rows.length ? `<div class="table-wrap"><table>
               <thead><tr><th>العميل</th><th>الهاتف</th><th class="num">المركبات</th><th class="num">عليه</th></tr></thead>
-              <tbody>${rows.map((c) => `<tr class="click" data-href="#/customer/${c.id}"><td><a href="#/customer/${c.id}">${esc(c.name)}</a>${c.customer_type === 'company' ? ' <span class="badge neutral">شركة</span>' : ''}</td>
+              <tbody>${rows.map((c) => `<tr class="click" data-href="#/customer/${c.id}"><td><a href="#/customer/${c.id}">${esc(c.name)}</a>${c.customer_type === 'company' ? ' <span class="badge neutral">شركة</span>' : c.customer_type === 'insurance' ? ' <span class="badge neutral">شركة تأمين</span>' : ''}</td>
                 <td><bdi class="ltr">${esc(c.phone || '')}</bdi></td><td class="num">${num(c.vehicles?.[0]?.count || 0)}</td>
                 <td class="num">${owed[c.id] ? `<span class="badge warning">${money(owed[c.id])}</span>` : '—'}</td></tr>`).join('')}</tbody></table></div>`
             : `<div class="empty"><p>${term ? 'لا يوجد عميل بهذا الاسم أو الرقم.' : 'لا يوجد عملاء بعد. يُضاف العميل تلقائياً عند استلام سيارته.'}</p></div>`;
@@ -68,7 +68,7 @@ export async function customerView([id]) {
   return {
     title: c.name,
     html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/customers" class="subtle">العملاء</a><h1>${esc(c.name)}</h1>
-        <p class="muted">${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''} ${c.customer_type === 'company' ? '· شركة' : ''}</p></div>
+        <p class="muted">${c.phone ? `<a href="tel:${esc(c.phone)}"><bdi class="ltr">${esc(c.phone)}</bdi></a>` : ''} ${c.customer_type === 'company' ? '· شركة' : c.customer_type === 'insurance' ? '· شركة تأمين' : ''}</p></div>
         <div class="row"><a class="btn" href="#/statement/customer/${c.id}" target="_blank" rel="noopener">${icon('print')} كشف حساب</a>${canEdit ? `<button class="btn" id="edit">عدّل البيانات</button><a class="btn primary" href="#/intake">${icon('plus')} استلام سيارة</a>` : ''}</div></div>
       <div class="kpis">
         <div class="kpi"><span class="label">الزيارات</span><span class="value">${num(jobs.length)}</span></div>

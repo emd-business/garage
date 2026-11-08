@@ -129,6 +129,7 @@ export default async function printDoc([id, fmt, cnId]) {
         <span>قبل الضريبة</span><span>${money(t.subtotal)}</span>
         <span>الضريبة ${num(isInvoice ? inv.vat_rate : g.vat_rate)}٪</span><span>${money(t.vat)}</span>
         <strong>الإجمالي</strong><strong>${money(t.total)}</strong>
+        ${isInvoice && inv.insurer_id && Number(inv.insurer_amount) ? `<span>حصة التأمين</span><span>${money(inv.insurer_amount)}</span>` : ''}
         ${isInvoice ? `<span>المدفوع</span><span>${money(inv.paid)}</span><strong>المتبقي</strong><strong>${money(inv.balance)}</strong>` : ''}
       </div>
       ${payments.length ? `<div class="r-small">${payments.map((p) => `سند ${idn(p.receipt_no)} · ${esc(METHODS[p.method])} · ${money(p.amount)}`).join('<br>')}</div>` : ''}
@@ -184,11 +185,12 @@ export default async function printDoc([id, fmt, cnId]) {
         <span>ضريبة القيمة المضافة ${num(isInvoice ? inv.vat_rate : g.vat_rate)}٪</span><span class="num">${money(t.vat)}</span>
         <span class="grand">الإجمالي</span><span class="num grand">${money(t.total)}</span>
         ${isInvoice && Number(inv.credited) ? `<span>إشعارات دائنة</span><span class="num">− ${money(inv.credited)}</span>` : ''}
+        ${isInvoice && inv.insurer_id && Number(inv.insurer_amount) ? `<span>حصة شركة التأمين${inv.claim_no ? ` (مطالبة <bdi class="ltr">${esc(inv.claim_no)}</bdi>)` : ''}</span><span class="num">${money(inv.insurer_amount)}</span><span>حصة العميل (التحمّل)</span><span class="num">${money(Number(inv.total) - Number(inv.insurer_amount))}</span>` : ''}
         ${isInvoice ? `<span>المدفوع</span><span class="num">${money(inv.paid)}</span><span><strong>المتبقي</strong></span><span class="num"><strong>${money(inv.balance)}</strong></span>` : ''}
       </div>
       <div class="words"><strong>المبلغ كتابةً:</strong> ${esc(amountWords(t.total))}</div>
 
-      ${payments.length ? `<div style="font-size:10.5pt"><strong>الدفعات:</strong> ${payments.map((p) => `سند ${idn(p.receipt_no)} · ${esc(METHODS[p.method])} · ${money(p.amount)} · ${esc(date(p.paid_at))}`).join(' — ')}</div>` : ''}
+      ${payments.length ? `<div style="font-size:10.5pt"><strong>الدفعات:</strong> ${payments.map((p) => `سند ${idn(p.receipt_no)} · ${p.deposit_id ? 'عربون' : esc(METHODS[p.method])}${p.payer === 'insurer' ? ' · التأمين' : ''} · ${money(p.amount)} · ${esc(date(p.paid_at))}`).join(' — ')}</div>` : ''}
       ${!isInvoice ? '<div style="font-size:10.5pt">هذا العرض تقديري، وقد تتغير التكلفة إن ظهرت أعمال إضافية بعد الفحص، ولن تُنفَّذ إلا بموافقتك.</div>' : ''}
 
       <div class="sign"><div>توقيع العميل</div><div>الختم والتوقيع</div></div>

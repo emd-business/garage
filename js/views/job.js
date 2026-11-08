@@ -42,11 +42,17 @@ export default async function job([id]) {
     db.get('payments', { invoice_id: `eq.${inv.id}`, order: 'paid_at' }),
     db.get('credit_notes', { invoice_id: `eq.${inv.id}`, order: 'issued_at' }).catch(() => []),
   ]) : [[], []];
+  const office0 = ctx.can('owner', 'manager', 'reception', 'accountant');
+  const [deposits, insurers] = await Promise.all([
+    office0 ? db.get('deposit_balances', { job_id: `eq.${id}`, order: 'paid_at' }).catch(() => []) : [],
+    office0 && inv ? db.get('customers', { customer_type: 'eq.insurance', select: 'id,name', order: 'name' }).catch(() => []) : [],
+  ]);
+  const realPayments = payments.filter((p) => !p.deposit_id);
   const v = j.vehicles || {}, c = j.customers || {};
   const g = ctx.garage;
   const est = computeTotals(lines, g.vat_rate, inv ? Number(inv.discount) : 0);
-  const stale = inv && payments.length === 0 && !credits.length && Math.abs(est.total - Number(inv.total)) > 0.0005;
-  const locked = payments.length > 0 || credits.length > 0;
+  const stale = inv && realPayments.length === 0 && !credits.length && Math.abs(est.total - Number(inv.total)) > 0.0005;
+  const locked = realPayments.length > 0 || credits.length > 0;
   const canCredit = inv && ctx.can('owner', 'manager', 'accountant');
   const creditLeft = inv ? round3(Number(inv.subtotal) - credits.reduce((a, x) => a + Number(x.subtotal), 0)) : 0;
 
@@ -141,7 +147,10 @@ export default async function job([id]) {
       <span>ضريبة القيمة المضافة ${num(g.vat_rate)}٪</span><span class="num">${money(t.vat)}</span>
       <span class="grand">الإجمالي</span><span class="num grand">${money(t.total)}</span>
       ${t.credited && Number(t.credited) ? `<span>إشعارات دائنة</span><span class="num">− ${money(t.credited)}</span>` : ''}
+      ${t.insurer_id && Number(t.insurer_amount) ? `<span>حصة التأمين${t.claim_no ? ` · مطالبة <bdi class="ltr">${esc(t.claim_no)}</bdi>` : ''}</span><span class="num">${money(t.insurer_amount)}</span>
+        <span>حصة العميل</span><span class="num">${money(Number(t.total) - Number(t.insurer_amount))}</span>` : ''}
       ${paid !== undefined ? `<span>المدفوع</span><span class="num">${money(paid)}</span><span><strong>المتبقي</strong></span><span class="num"><strong>${money(balance)}</strong></span>` : ''}
+      ${t.insurer_id && Number(t.insurer_amount) && paid !== undefined ? `<span class="subtle">منها على العميل</span><span class="num subtle">${money(t.customer_balance)}</span><span class="subtle">ومنها على التأمين</span><span class="num subtle">${money(t.insurer_balance)}</span>` : ''}
     </div>`;
 
   const invoiceCard = !office ? '' : `<section class="card stack">
@@ -156,7 +165,8 @@ export default async function job([id]) {
       ${inv && Number(inv.balance) > 0.0005 && !stale ? `<form id="pay" class="stack" novalidate>
           <h3>تسجيل دفعة</h3>
           <div class="grid form" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">
-            ${field('المبلغ', `<input name="amount" type="number" step="0.001" min="0.001" max="${esc(inv.balance)}" inputmode="decimal" required value="${esc(Number(inv.balance).toFixed(3))}">`, { req: true })}
+            ${inv.insurer_id ? field('الدافع', `<select name="payer">${options([['customer', 'العميل'], ['insurer', 'شركة التأمين']], Number(inv.customer_balance) > 0.0005 ? 'customer' : 'insurer')}</select>`) : ''}
+            ${field('المبلغ', `<input name="amount" type="number" step="0.001" min="0.001" max="${esc(inv.balance)}" inputmode="decimal" required value="${esc(Number(inv.insurer_id ? (Number(inv.customer_balance) > 0.0005 ? inv.customer_balance : inv.insurer_balance) : inv.balance).toFixed(3))}">`, { req: true })}
             ${field('الطريقة', `<select name="method">${options(Object.entries(METHODS), 'cash')}</select>`)}
             ${field('مرجع', '<input name="reference" placeholder="اختياري">')}
           </div>
@@ -164,11 +174,16 @@ export default async function job([id]) {
         </form>` : ''}
       ${credits.length ? `<div><h3>الإشعارات الدائنة</h3><div class="list">${credits.map((x) => `<div class="list-item" style="flex-wrap:wrap;row-gap:6px"><span style="flex:1 1 160px">إشعار ${idn(x.credit_no)} · ${esc(x.reason)}<br><span class="subtle">${esc(dateTime(x.issued_at))}${Number(x.refund_amount) ? ` · رُدّ للعميل ${money(x.refund_amount)} ${esc(METHODS[x.refund_method] || '')}` : ''}</span></span>
           <span class="row" style="gap:6px;flex-wrap:nowrap"><strong>− ${money(x.total)}</strong><a class="btn small ghost" href="#/print/${j.id}/credit/${x.id}" target="_blank" rel="noopener" aria-label="اطبع الإشعار ${idn(x.credit_no)}">${icon('print')}</a><button type="button" class="btn small ghost" data-xml-cn="${x.id}" aria-label="ملف XML للإشعار ${idn(x.credit_no)}">XML</button></span></div>`).join('')}</div></div>` : ''}
+      ${deposits.length ? `<div><h3>العربون</h3><div class="list">${deposits.map((x) => `<div class="list-item" style="flex-wrap:wrap;row-gap:6px"><span style="flex:1 1 160px">سند ${idn(x.receipt_no)} · ${esc(METHODS[x.method])}<br><span class="subtle">${esc(dateTime(x.paid_at))}${Number(x.applied) ? ` · خُصم من الفاتورة ${money(x.applied)}` : ''}${Number(x.refunded) ? ` · رُدّ ${money(x.refunded)}` : ''}</span></span>
+          <span class="row" style="gap:6px;flex-wrap:nowrap"><strong>${money(x.amount)}</strong>${Number(x.remaining) > 0.0005 && ctx.can('owner', 'manager', 'accountant') ? `<button type="button" class="btn small ghost" data-refund-dep="${x.id}">ردّ ${money(x.remaining)}</button>` : ''}</span></div>`).join('')}</div>
+          ${!inv && deposits.some((x) => Number(x.remaining) > 0.0005) ? '<p class="subtle">يُخصم العربون تلقائياً عند إصدار الفاتورة.</p>' : ''}</div>` : ''}
+      ${!['delivered', 'cancelled'].includes(j.status) && (!inv || Number(inv.balance) > 0.0005) ? '<div><button type="button" class="btn small" id="deposit">عربون مقدّم</button></div>' : ''}
       ${inv ? `<div class="row" style="gap:8px">
           ${canCredit && creditLeft > 0.0005 ? '<button type="button" class="btn small" id="credit">إشعار دائن</button>' : ''}
+          ${!credits.length ? `<button type="button" class="btn small" id="insurance">${inv.insurer_id ? 'تعديل التأمين' : 'مطالبة تأمين'}</button>` : ''}
           <button type="button" class="btn small ghost" id="xml-inv" title="ملف الفاتورة الإلكترونية بصيغة UBL لمزوّد فوترة">ملف XML للفوترة</button>
         </div>` : ''}
-      ${payments.length ? `<div><h3>الدفعات</h3><div class="list">${payments.map((p) => `<div class="list-item"><span>سند ${idn(p.receipt_no)} · ${esc(METHODS[p.method])}<br><span class="subtle">${esc(dateTime(p.paid_at))}</span></span><strong>${money(p.amount)}</strong></div>`).join('')}</div></div>` : ''}
+      ${payments.length ? `<div><h3>الدفعات</h3><div class="list">${payments.map((p) => `<div class="list-item"><span>سند ${idn(p.receipt_no)} · ${p.deposit_id ? 'من العربون' : esc(METHODS[p.method])}${p.payer === 'insurer' ? ' · شركة التأمين' : ''}<br><span class="subtle">${esc(dateTime(p.paid_at))}</span></span><strong>${money(p.amount)}</strong></div>`).join('')}</div></div>` : ''}
       ${j.status === 'ready' && ctx.can('owner', 'manager', 'reception') ? `<button class="btn ${inv && Number(inv.balance) <= 0.0005 ? 'primary' : ''}" data-status="delivered">سلّم السيارة للعميل</button>` : ''}
     </section>`;
 
@@ -402,13 +417,44 @@ export default async function job([id]) {
       el.querySelector('#xml-inv')?.addEventListener('click', () => download('invoice'));
       el.querySelectorAll('[data-xml-cn]').forEach((b) => b.addEventListener('click', () => download('credit', credits.find((x) => x.id === b.dataset.xmlCn))));
 
+      el.querySelector('#pay [name="payer"]')?.addEventListener('change', (e) => {
+        el.querySelector('#pay [name="amount"]').value = Number(e.target.value === 'insurer' ? inv.insurer_balance : inv.customer_balance).toFixed(3);
+      });
+      el.querySelector('#deposit')?.addEventListener('click', () => openDialog('عربون مقدّم', `
+        <p class="muted">مبلغ يدفعه العميل قبل الفاتورة، مثل ثمن قطع تُطلب من الوكالة. يصدر له سند قبض الآن، ويُخصم تلقائياً من الفاتورة عند إصدارها.</p>
+        <div class="grid form" style="grid-template-columns:1fr 1fr">
+          ${field('المبلغ (ر.ع)', '<input name="amount" type="number" step="0.001" min="0.001" inputmode="decimal" required>', { req: true })}
+          ${field('الطريقة', `<select name="method">${options(Object.entries(METHODS), 'cash')}</select>`)}
+        </div>
+        ${field('مرجع', '<input name="reference" placeholder="اختياري">')}`, async (d) => {
+        const r = await db.rpc('add_deposit', { p_job: j.id, p_amount: Number(d.amount), p_method: d.method, p_reference: d.reference });
+        toast(`سُجّل العربون، سند قبض ${idn(r.receipt_no)}`); reload();
+      }, { submitLabel: 'سجّل العربون' }));
+      el.querySelectorAll('[data-refund-dep]').forEach((b) => b.addEventListener('click', () => {
+        const x = deposits.find((y) => y.id === b.dataset.refundDep);
+        openDialog('ردّ العربون', `<p>يُردّ للعميل ${money(x.remaining)} من العربون رقم ${idn(x.receipt_no)}.</p>${field('طريقة الرد', `<select name="method">${options(Object.entries(METHODS), x.method)}</select>`)}`, async (d) => {
+          await db.rpc('refund_deposit', { p_deposit: x.id, p_method: d.method });
+          toast('رُدّ العربون'); reload();
+        }, { submitLabel: 'ردّ المبلغ' });
+      }));
+      el.querySelector('#insurance')?.addEventListener('click', () => openDialog('مطالبة تأمين', insurers.length ? `
+        <p class="muted">تُقسم الفاتورة: حصة على شركة التأمين، والباقي (التحمّل) على العميل. يظهر كل جزء في كشف حسابه.</p>
+        ${field('شركة التأمين', `<select name="insurer" required>${options(insurers.map((x) => [x.id, x.name]), inv.insurer_id || '', { empty: 'بلا تأمين' })}</select>`)}
+        <div class="grid form" style="grid-template-columns:1fr 1fr">
+          ${field('رقم المطالبة', `<input name="claim_no" dir="ltr" value="${esc(inv.claim_no || '')}">`)}
+          ${field('حصة التأمين (ر.ع)', `<input name="amount" type="number" step="0.001" min="0" max="${esc(inv.total)}" inputmode="decimal" value="${esc(Number(inv.insurer_amount) ? inv.insurer_amount : '')}">`, { hint: `الإجمالي ${money(inv.total)}` })}
+        </div>` : '<p>لا توجد شركات تأمين بعد. أضفها من «العملاء» بنوع «شركة تأمين»، ثم ارجع هنا.</p>', async (d) => {
+        if (!insurers.length) return true;
+        await db.rpc('set_invoice_insurance', { p_invoice: inv.id, p_insurer: d.insurer || null, p_claim_no: d.claim_no, p_amount: Number(d.amount || 0) });
+        toast(d.insurer ? 'قُسمت الفاتورة مع التأمين' : 'أُزيل التأمين'); reload();
+      }));
       el.querySelector('#pay')?.addEventListener('submit', (ev) => {
         ev.preventDefault();
         const f = ev.target;
         if (!f.reportValidity()) return;
         const d = formData(f);
         busy(ev.submitter, async () => {
-          const p = await db.insert('payments', { invoice_id: inv.id, amount: Number(d.amount), method: d.method, reference: d.reference });
+          const p = await db.insert('payments', { invoice_id: inv.id, amount: Number(d.amount), method: d.method, reference: d.reference, payer: d.payer || 'customer' });
           toast(`سُجّلت الدفعة، سند قبض ${idn(p.receipt_no)}`);
           reload();
         });

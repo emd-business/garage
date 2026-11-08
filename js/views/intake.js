@@ -49,7 +49,7 @@ export default async function intake() {
     : `<div class="grid form">
             ${field('اسم العميل', '<input name="c_name" required autocomplete="off">', { req: true })}
             ${field('الهاتف', '<input name="c_phone" type="tel" inputmode="tel" dir="ltr" required>', { req: true, hint: 'للتواصل عبر واتساب' })}
-            ${field('النوع', `<select name="c_type">${options([['individual', 'فرد'], ['company', 'شركة']], 'individual')}</select>`)}
+            ${field('النوع', `<select name="c_type">${options([['individual', 'فرد'], ['company', 'شركة'], ['insurance', 'شركة تأمين']], 'individual')}</select>`)}
           </div>`}
       </section>
       <section class="card stack">

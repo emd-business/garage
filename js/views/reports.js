@@ -56,6 +56,9 @@ export default async function reports([from, to, bq]) {
         <div class="kpi ${net < 0 ? 'alert' : ''}"><span class="label">صافي الربح</span><span class="value">${money(net)}</span></div>
         <div class="kpi"><span class="label">المحصَّل</span><span class="value">${money(r.collected)}</span></div>
         <div class="kpi"><span class="label">الفواتير</span><span class="value">${num(r.invoices)}</span></div>
+        ${Number(r.insurance_due) ? `<div class="kpi"><span class="label">مستحق على شركات التأمين</span><span class="value">${money(r.insurance_due)}</span></div>` : ''}
+        ${Number(r.deposits_held) ? `<div class="kpi"><span class="label">عربون لم يُستخدم بعد</span><span class="value">${money(r.deposits_held)}</span></div>` : ''}
+        ${Number(r.purchase_returns) ? `<div class="kpi"><span class="label">مرتجعات للموردين</span><span class="value">${money(r.purchase_returns)}</span></div>` : ''}
         <div class="kpi ${recTotal > 0.0005 ? 'alert' : ''}"><span class="label">على العملاء الآن</span><span class="value">${money(recTotal)}</span></div>
       </div>
 

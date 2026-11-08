@@ -67,7 +67,9 @@ export default async function portal([token]) {
           <span>المجموع قبل الضريبة</span><span class="num">${money(invoice ? invoice.subtotal : sub)}</span>
           <span>ضريبة القيمة المضافة ${num(vat)}٪</span><span class="num">${money(invoice ? invoice.vat : round3(sub * vat / 100))}</span>
           <span class="grand">${invoice ? 'إجمالي الفاتورة' : 'الإجمالي التقديري'}</span><span class="num grand">${money(invoice ? invoice.total : round3(sub * (1 + vat / 100)))}</span>
-          ${invoice ? `<span>المدفوع</span><span class="num">${money(invoice.paid)}</span><span><strong>المتبقي</strong></span><span class="num"><strong>${money(invoice.balance)}</strong></span>` : ''}
+          ${invoice && Number(invoice.insurer_amount) ? `<span>تتحمّله ${esc(invoice.insurer || 'شركة التأمين')}${invoice.claim_no ? ` (مطالبة <bdi class="ltr">${esc(invoice.claim_no)}</bdi>)` : ''}</span><span class="num">− ${money(invoice.insurer_amount)}</span>` : ''}
+          ${invoice ? `<span>المدفوع</span><span class="num">${money(invoice.paid)}</span><span><strong>${Number(invoice.insurer_amount) ? 'المتبقي عليك' : 'المتبقي'}</strong></span><span class="num"><strong>${money(invoice.balance)}</strong></span>` : ''}
+          ${!invoice && Number(d.deposits) ? `<span>العربون المدفوع</span><span class="num">− ${money(d.deposits)}</span>` : ''}
         </div>
         ${!invoice && pendingL.length ? '<p class="subtle">الإجمالي يشمل ما وافقت عليه فقط.</p>' : ''}
       </section>` : ''}

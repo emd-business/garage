@@ -13,10 +13,12 @@ const supplierFields = (s = {}) => `
 
 export default async function purchases([tab]) {
   const canPay = ctx.can('owner', 'manager', 'accountant');
-  const [list, suppliers, items] = await Promise.all([
+  const isRet = tab === 'returns';
+  const [list, suppliers, items, returns] = await Promise.all([
     db.get('purchases', { ...ctx.here, select: '*,suppliers(name)', order: 'purchase_date.desc,purchase_no.desc', limit: 100 }),
     db.get('supplier_balances', { order: 'name' }),
     db.get('items', { active: 'eq.true', order: 'name', select: 'id,name,sku,qty,unit_cost' }),
+    isRet ? db.get('purchase_returns', { select: '*,suppliers(name)', order: 'return_date.desc,return_no.desc', limit: 100 }).catch(() => []) : [],
   ]);
   const isSup = tab === 'suppliers';
   const owed = suppliers.reduce((a, s) => a + Math.max(0, Number(s.balance)), 0);
@@ -27,10 +29,16 @@ export default async function purchases([tab]) {
         <td><bdi class="ltr">${esc(p.supplier_invoice_no || '')}</bdi></td><td class="num">${money(p.subtotal)}</td><td class="num">${money(p.vat)}</td><td class="num"><strong>${money(p.total)}</strong></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لا توجد فواتير شراء بعد.</p><p class="subtle">سجّل فاتورة المورد فتزيد كميات الأصناف ويُحدَّث متوسط تكلفتها تلقائياً.</p></div>';
 
+  const returnsTable = returns.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>رقم</th><th>التاريخ</th><th>المورد</th><th>السبب</th><th class="num">قبل الضريبة</th><th class="num">الضريبة</th><th class="num">الإجمالي</th></tr></thead>
+      <tbody>${returns.map((r) => `<tr><td>${idn(r.return_no)}</td><td>${esc(date(r.return_date))}</td><td>${esc(r.suppliers?.name || '')}</td><td>${esc(r.notes || '')}</td>
+        <td class="num">${money(r.subtotal)}</td><td class="num">${money(r.vat)}</td><td class="num"><strong>${money(r.total)}</strong></td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="empty"><p>لا توجد مرتجعات بعد.</p><p class="subtle">عند إرجاع قطعة معيبة أو زائدة للمورد، سجّلها مرتجعاً فتنقص من المخزون ومن المستحق له.</p></div>';
+
   const suppliersTable = suppliers.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>المورد</th><th>الهاتف</th><th class="num">المشتريات</th><th class="num">المدفوع</th><th class="num">المستحق له</th><th><span class="hidden">إجراءات</span></th></tr></thead>
+      <thead><tr><th>المورد</th><th>الهاتف</th><th class="num">المشتريات</th><th class="num">المرتجعات</th><th class="num">المدفوع</th><th class="num">المستحق له</th><th><span class="hidden">إجراءات</span></th></tr></thead>
       <tbody>${suppliers.map((s) => `<tr><td><strong>${esc(s.name)}</strong></td><td><bdi class="ltr">${esc(s.phone || '')}</bdi></td>
-        <td class="num">${money(s.purchased)}</td><td class="num">${money(s.paid)}</td>
+        <td class="num">${money(s.purchased)}</td><td class="num">${Number(s.returned) ? money(s.returned) : '—'}</td><td class="num">${money(s.paid)}</td>
         <td class="num">${Number(s.balance) > 0.0005 ? `<span class="badge warning">${money(s.balance)}</span>` : '—'}</td>
         <td><div class="row" style="gap:6px;flex-wrap:nowrap">${canPay ? `<button class="btn small teal" data-pay="${s.id}">سداد</button>` : ''}<a class="btn small ghost" href="#/statement/supplier/${s.id}" target="_blank" rel="noopener">كشف</a><button class="btn small ghost" data-edit-sup="${s.id}">تعديل</button></div></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty"><p>لا يوجد موردون بعد.</p></div>';
@@ -38,12 +46,13 @@ export default async function purchases([tab]) {
   return {
     title: 'المشتريات',
     html: `<div class="page-head"><div><h1>المشتريات والموردون</h1><p class="lead">${owed > 0.0005 ? `مستحق للموردين ${money(owed)}` : 'لا توجد مبالغ مستحقة للموردين'}</p></div>
-        <div class="row"><button class="btn" id="new-sup">${icon('plus')} مورد</button><button class="btn primary" id="new-pur" ${suppliers.length ? '' : 'disabled title="أضف مورداً أولاً"'}>${icon('plus')} فاتورة شراء</button></div></div>
-      <div class="tabs" role="tablist" style="max-width:360px">
-        <button role="tab" aria-selected="${!isSup}" data-tab="">فواتير الشراء</button>
+        <div class="row"><button class="btn" id="new-sup">${icon('plus')} مورد</button><button class="btn" id="new-ret" ${suppliers.length ? '' : 'disabled'}>${icon('back')} مرتجع للمورد</button><button class="btn primary" id="new-pur" ${suppliers.length ? '' : 'disabled title="أضف مورداً أولاً"'}>${icon('plus')} فاتورة شراء</button></div></div>
+      <div class="tabs" role="tablist" style="max-width:480px">
+        <button role="tab" aria-selected="${!isSup && !isRet}" data-tab="">فواتير الشراء</button>
+        <button role="tab" aria-selected="${isRet}" data-tab="returns">المرتجعات</button>
         <button role="tab" aria-selected="${isSup}" data-tab="suppliers">الموردون</button>
       </div>
-      <section class="card pad-0">${isSup ? suppliersTable : purchasesTable}</section>`,
+      <section class="card pad-0">${isSup ? suppliersTable : isRet ? returnsTable : purchasesTable}</section>`,
     bind(el) {
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
       el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { location.hash = `#/purchases${b.dataset.tab ? `/${b.dataset.tab}` : ''}`; }));
@@ -77,7 +86,7 @@ export default async function purchases([tab]) {
           ${p.notes ? `<p>${esc(p.notes)}</p>` : ''}`, async () => true, { submitLabel: 'إغلاق' });
       }));
 
-      el.querySelector('#new-pur').addEventListener('click', () => {
+      const docDialog = (ret) => {
         if (!items.length) { toast('أضف الأصناف في المخزون أولاً', 'error'); return; }
         const itemOpts = options(items.map((it) => [it.id, `${it.name}${it.sku ? ` (${it.sku})` : ''}`]), '', { empty: 'اختر الصنف' });
         const lineHtml = () => `<div class="pline grid" style="grid-template-columns:minmax(0,2fr) 90px 110px 44px;gap:8px;align-items:end">
@@ -85,25 +94,32 @@ export default async function purchases([tab]) {
             <label class="field"><span>الكمية</span><input data-l="qty" type="number" min="0.01" step="0.01" value="1" inputmode="decimal" required></label>
             <label class="field"><span>تكلفة الوحدة</span><input data-l="cost" type="number" min="0" step="0.001" inputmode="decimal" required></label>
             <button type="button" class="btn ghost icon-btn" data-rm aria-label="احذف السطر">${icon('trash')}</button></div>`;
-        const d = openDialog('فاتورة شراء جديدة', `
+        const d = openDialog(ret ? 'مرتجع للمورد' : 'فاتورة شراء جديدة', `
+          ${ret ? '<p class="muted">تنقص الكميات من مخزون هذا الفرع، وينقص المستحق للمورد، وتُعكس ضريبة المدخلات.</p>' : ''}
           <div class="grid form" style="grid-template-columns:1fr 1fr">
             ${field('المورد', `<select name="supplier" required>${options(suppliers.map((s) => [s.id, s.name]), '', { empty: 'اختر المورد' })}</select>`, { req: true })}
-            ${field('رقم فاتورة المورد', '<input name="invoice_no" dir="ltr">')}
+            ${ret ? field('السبب', '<input name="reason" placeholder="مثال: قطعة معيبة">') : field('رقم فاتورة المورد', '<input name="invoice_no" dir="ltr">')}
             ${field('التاريخ', `<input name="date" type="date" value="${todayStr()}">`)}
           </div>
           <div id="plines" class="stack" style="gap:10px">${lineHtml()}</div>
           <button type="button" class="btn small" id="add-line" style="align-self:flex-start">${icon('plus')} سطر</button>
           <div class="totals"><span>قبل الضريبة</span><span class="num" id="p-sub">${money(0)}</span></div>
-          <label class="field"><span>ضريبة المدخلات (ر.ع)</span><span class="row" style="flex-wrap:nowrap"><input name="vat" type="number" step="0.001" min="0" inputmode="decimal" value="0"><button type="button" class="btn small" id="vat5">${num(ctx.garage.vat_rate)}٪</button></span></label>
-          ${field('ملاحظات', '<input name="notes">')}`, async (data, form) => {
+          <label class="field"><span>${ret ? 'ضريبة المدخلات المعكوسة (ر.ع)' : 'ضريبة المدخلات (ر.ع)'}</span><span class="row" style="flex-wrap:nowrap"><input name="vat" type="number" step="0.001" min="0" inputmode="decimal" value="0"><button type="button" class="btn small" id="vat5">${num(ctx.garage.vat_rate)}٪</button></span></label>
+          ${ret ? '' : field('ملاحظات', '<input name="notes">')}`, async (data, form) => {
           const lines = [...form.querySelectorAll('.pline')].map((r) => ({
             item_id: r.querySelector('[data-l=item]').value, qty: Number(r.querySelector('[data-l=qty]').value), unit_cost: Number(r.querySelector('[data-l=cost]').value),
           })).filter((l) => l.item_id);
           if (!lines.length) throw new Error('أضف صنفاً واحداً على الأقل');
+          if (ret) {
+            const r = await db.rpc('post_purchase_return', { p_supplier: data.supplier, p_purchase: null, p_date: data.date, p_vat: Number(data.vat || 0), p_lines: lines, p_notes: data.reason });
+            toast(`سُجّل المرتجع ${idn(r.return_no)} ونقصت الكميات من المخزون`);
+            location.hash = '#/purchases/returns';
+            return;
+          }
           const p = await db.rpc('post_purchase', { p_supplier: data.supplier, p_invoice_no: data.invoice_no, p_date: data.date, p_vat: Number(data.vat || 0), p_lines: lines, p_notes: data.notes });
           toast(`سُجّلت فاتورة الشراء ${idn(p.purchase_no)} وأُضيفت الكميات للمخزون`);
           reload();
-        }, { submitLabel: 'سجّل الفاتورة' });
+        }, { submitLabel: ret ? 'سجّل المرتجع' : 'سجّل الفاتورة' });
         const box = d.querySelector('#plines');
         const subtotal = () => round3([...box.querySelectorAll('.pline')].reduce((a, r) => a + Number(r.querySelector('[data-l=qty]').value || 0) * Number(r.querySelector('[data-l=cost]').value || 0), 0));
         const recalc = () => { d.querySelector('#p-sub').textContent = money(subtotal()); };
@@ -120,7 +136,9 @@ export default async function purchases([tab]) {
         d.querySelector('#add-line').addEventListener('click', () => { box.insertAdjacentHTML('beforeend', lineHtml()); });
         d.querySelector('#vat5').addEventListener('click', () => { d.querySelector('[name=vat]').value = round3(subtotal() * Number(ctx.garage.vat_rate) / 100).toFixed(3); });
         d.style.maxWidth = '720px';
-      });
+      };
+      el.querySelector('#new-pur').addEventListener('click', () => docDialog(false));
+      el.querySelector('#new-ret').addEventListener('click', () => docDialog(true));
     },
   };
 }
