@@ -1,5 +1,17 @@
 // Arabic → English UI dictionary (generated from the app source; longest phrases are applied first)
 export default {
+"للأمر فاتورة صادرة. احذف الفاتورة إن لم تُدفع، أو أصدر إشعاراً دائناً، ثم ألغِ الأمر": "This job has an issued invoice. Delete it if unpaid, or issue a credit note, then cancel the job",
+"أصدر الفاتورة قبل تسليم السيارة": "Issue the invoice before delivering the car",
+"هذه اللوحة مسجلة من قبل. ابحث عنها في أعلى الصفحة، واختر «مالك جديد» إن كانت السيارة قد بيعت.": "This plate is already registered. Search for it above and choose \"New owner\" if the car was sold.",
+"ستُنقل ملكية السيارة من": "The car's ownership will move from",
+"إلى هذا العميل، ويبقى تاريخ صيانتها معها.": "to this customer, and its service history stays with it.",
+"تأكد منها، ثم اضغط «افتح أمر العمل» مرة أخرى إن كانت صحيحة (مثل تبديل العداد).": "Check it, then press \"Open job order\" again if it is right (e.g. a replaced odometer).",
+"أقل من آخر قراءة مسجلة لهذه السيارة": "is lower than this car's last recorded reading",
+"آخر قراءة مسجلة": "Last recorded reading",
+"السيارة بيعت لشخص آخر": "The car was sold to someone else",
+"المالك الجديد": "New owner",
+"مالك جديد": "New owner",
+"المركبة غير موجودة": "Vehicle not found",
 "اتركها فارغة إن كانت القطعة تناسب كل السيارات. الموديل والسنوات اختيارية.": "Leave empty if the part fits every car. Model and years are optional.",
 "ابحث باسم الصنف أو رمزه أو السيارة": "Search by item name, code or car",
 "السيارات المناسبة لهذه القطعة": "Cars this part fits",

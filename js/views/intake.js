@@ -43,7 +43,8 @@ export default async function intake() {
     const c = picked.customer, v = picked.vehicle;
     return `<form id="intake-form" class="stack" novalidate>
       <section class="card stack">
-        <div class="card-head"><h2>العميل</h2><button type="button" class="btn small ghost" id="change">${icon('back')} تغيير</button></div>
+        <div class="card-head"><h2>${picked.transfer ? 'المالك الجديد' : 'العميل'}</h2><button type="button" class="btn small ghost" id="change">${icon('back')} تغيير</button></div>
+        ${picked.transfer ? `<div class="notice info">ستُنقل ملكية السيارة من ${esc(picked.transfer.name)} إلى هذا العميل، ويبقى تاريخ صيانتها معها.</div>` : ''}
         ${c ? `<p><strong>${esc(c.name)}</strong> · <bdi class="ltr">${esc(c.phone || '')}</bdi></p>`
     : `<div class="grid form">
             ${field('اسم العميل', '<input name="c_name" required autocomplete="off">', { req: true })}
@@ -61,7 +62,8 @@ export default async function intake() {
         <h2>الاستلام</h2>
         <div class="grid form">
           ${field('شكوى العميل', '<textarea name="complaint" required placeholder="ماذا يشكو منه العميل؟"></textarea>', { req: true, cls: 'span-all' })}
-          ${field('قراءة العداد (كم)', `<input name="odometer" type="number" inputmode="numeric" min="0" value="${esc(v?.odometer || '')}">`)}
+          ${field('قراءة العداد (كم)', `<input name="odometer" type="number" inputmode="numeric" min="0" value="${esc(v?.odometer || '')}">`, v?.odometer ? { hint: `آخر قراءة مسجلة ${num(v.odometer)} كم` } : {})}
+          <div id="odo-warn" class="span-all"></div>
           <label class="field"><span>مستوى الوقود</span><span class="fuel"><input name="fuel_level" type="range" min="0" max="100" step="25" value="50" aria-label="مستوى الوقود"><output>٥٠٪</output></span></label>
           ${field('موعد التسليم المتوقع', '<input name="promised_at" type="datetime-local">')}
           ${field('الفني المسؤول', `<select name="technician_id">${options(ctx.technicians.map((s) => [s.user_id, s.full_name]), '', { empty: 'لاحقاً' })}</select>`)}
@@ -104,12 +106,27 @@ export default async function intake() {
           ev.preventDefault();
           if (!form.reportValidity()) return;
           const d = formData(form);
+          // a lower reading than last visit is usually a typo: ask once
+          const last = Number(picked.vehicle?.odometer || 0);
+          if (d.odometer && Number(d.odometer) < last && form.dataset.odoOk !== d.odometer) {
+            form.dataset.odoOk = d.odometer;
+            form.querySelector('#odo-warn').innerHTML = `<div class="notice warn" role="alert">القراءة ${num(d.odometer)} كم أقل من آخر قراءة مسجلة لهذه السيارة (${num(last)} كم). تأكد منها، ثم اضغط «افتح أمر العمل» مرة أخرى إن كانت صحيحة (مثل تبديل العداد).</div>`;
+            form.querySelector('[name="odometer"]').focus();
+            return;
+          }
           await busy(ev.submitter, async () => {
             let customer = picked.customer;
             if (!customer) customer = await db.insert('customers', { name: d.c_name, phone: d.c_phone, customer_type: d.c_type });
             let vehicle = picked.vehicle;
-            if (!vehicle) vehicle = await db.insert('vehicles', { customer_id: customer.id, ...vehicleRow(d), odometer: d.odometer ? Number(d.odometer) : null });
-            else if (d.odometer) await db.update('vehicles', { id: `eq.${vehicle.id}` }, { odometer: Number(d.odometer) });
+            if (picked.transfer) await db.rpc('transfer_vehicle', { p_vehicle: vehicle.id, p_customer: customer.id });
+            if (!vehicle) {
+              try {
+                vehicle = await db.insert('vehicles', { customer_id: customer.id, ...vehicleRow(d), odometer: d.odometer ? Number(d.odometer) : null });
+              } catch (e) {
+                if (/vehicles_plate_unique|duplicate key/.test(e.message)) throw new Error('هذه اللوحة مسجلة من قبل. ابحث عنها في أعلى الصفحة، واختر «مالك جديد» إن كانت السيارة قد بيعت.');
+                throw e;
+              }
+            }
             const checklist = {};
             CHECKS.forEach((c2, i) => { checklist[c2] = !!d[`chk_${i}`]; });
             const files = [...(form.querySelector('[name="photos"]').files || [])];
@@ -161,11 +178,16 @@ export default async function intake() {
                 ? `<div class="list">${rows.map((r, i) => `<div class="list-item">
                     <span class="row" style="gap:10px">${r.v ? `${plateTag(r.v)} <strong>${esc(carName(r.v))}</strong>` : '<strong>مركبة جديدة</strong>'}
                       <span class="subtle">${esc(r.c?.name || '')} <bdi class="ltr">${esc(r.c?.phone || '')}</bdi></span></span>
-                    <button class="btn small teal" data-pick="${i}">${r.v ? 'استلم هذه السيارة' : 'أضف مركبة لهذا العميل'}</button></div>`).join('')}</div>`
+                    <span class="row" style="gap:6px">${r.v ? `<button class="btn small ghost" data-owner="${i}" title="السيارة بيعت لشخص آخر">مالك جديد</button>` : ''}<button class="btn small teal" data-pick="${i}">${r.v ? 'استلم هذه السيارة' : 'أضف مركبة لهذا العميل'}</button></span></div>`).join('')}</div>`
                 : '<div class="notice info">لا توجد نتائج. أضفه عميلاً جديداً.</div>';
               results.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
                 const r = rows[Number(b.dataset.pick)];
                 picked = { customer: r.c, vehicle: r.v };
+                showForm();
+              }));
+              results.querySelectorAll('[data-owner]').forEach((b) => b.addEventListener('click', () => {
+                const r = rows[Number(b.dataset.owner)];
+                picked = { customer: null, vehicle: r.v, transfer: r.c || { name: '' } };
                 showForm();
               }));
             } catch (e) { results.innerHTML = `<div class="notice error">${esc(e.message)}</div>`; }
