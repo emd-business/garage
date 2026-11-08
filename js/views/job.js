@@ -217,6 +217,27 @@ export default async function job([id]) {
       ${checklist.length ? `<div class="row" style="gap:6px">${checklist.map(([k, ok]) => `<span class="badge ${ok ? 'success' : 'neutral'}">${ok ? '✓' : '—'} ${esc(k)}</span>`).join('')}</div>` : ''}
     </section>`;
 
+  // ---- the one thing to do next ----
+  const nextStep = (() => {
+    if (['delivered', 'cancelled'].includes(j.status)) return null;
+    if (!lines.length) return editLines ? { t: 'أضف الأعمال والقطع', h: 'ابدأ بما وجده الفني في الفحص.', sel: '[data-add="labor"]' } : null;
+    const na = lines.filter((l) => l.approval_state === 'na').length;
+    const over = g.approval_threshold != null && est.labor + est.parts > Number(g.approval_threshold);
+    if (['received', 'inspection', 'approval'].includes(j.status)) {
+      if (pending) return { t: 'بانتظار موافقة العميل', h: `${num(pending)} بند بانتظار رده. إن وافق بالهاتف اضغط «وافق هاتفياً» على كل بند.`, info: true };
+      if (na && (over || j.status !== 'approval')) return { t: 'اطلب موافقة العميل', h: over ? `التكلفة فوق حد الموافقة (${money(g.approval_threshold)}).` : 'يصله رابط يرى فيه البنود والأسعار ويوافق بنفسه.', sel: '#req-approval', alt: over ? null : { t: 'أو ابدأ الإصلاح مباشرة', status: 'repair' } };
+      return { t: 'ابدأ الإصلاح', h: 'انقل السيارة إلى مرحلة الإصلاح.', status: 'repair' };
+    }
+    if (j.status === 'repair') return { t: 'انتهى الإصلاح؟ انقلها لفحص الجودة', h: 'تجربة السيارة قبل تسليمها.', status: 'qc' };
+    if (j.status === 'qc') return { t: 'السيارة جاهزة', h: 'بعدها أرسل للعميل رسالة «السيارة جاهزة».', status: 'ready' };
+    if (!inv || stale) return office ? { t: stale ? 'حدّث الفاتورة' : 'أصدر الفاتورة', h: `الإجمالي ${money(est.total)} شامل الضريبة.`, sel: '#issue button' } : null;
+    if (Number(inv.balance) > 0.0005) return office ? { t: 'استلم المبلغ', h: `المتبقي ${money(inv.balance)}.`, sel: '#pay [name="amount"]' } : null;
+    return { t: 'سلّم السيارة', h: 'الفاتورة مدفوعة بالكامل.', status: 'delivered' };
+  })();
+  const nextHtml = nextStep ? `<div class="next-step ${nextStep.info ? 'info' : ''}" id="next-step">
+      <div><span class="label">الخطوة التالية</span><strong>${esc(nextStep.t)}</strong>${nextStep.h ? `<span class="subtle">${esc(nextStep.h)}</span>` : ''}</div>
+      <div class="row" style="gap:8px">${nextStep.info ? '' : `<button type="button" class="btn primary" data-next>${esc(nextStep.t)}</button>`}${nextStep.alt ? `<button type="button" class="btn small ghost" data-next-alt>${esc(nextStep.alt.t)}</button>` : ''}</div></div>` : '';
+
   return {
     title: `أمر ${j.job_no}`,
     html: `<div class="page-head">
@@ -227,12 +248,27 @@ export default async function job([id]) {
         </div>
         <a class="btn small" href="#/print/${j.id}/card" target="_blank" rel="noopener">${icon('print')} كرت الورشة</a>
       </div>
+      ${nextHtml}
       ${stepper}
       <div class="cols">
         <div class="stack">${linesCard}${inspectionCard}${notesCard}${detailsCard}</div>
         <div class="stack">${invoiceCard}${linkCard}${timerCard}${waCard}${photosCard}${infoCard}</div>
       </div>`,
     bind(el) {
+      const doStep = (st) => {
+        if (st.status) { const b = el.querySelector(`[data-status="${st.status}"]`); if (b && !b.disabled) b.click(); else toast('هذه الخطوة لمالك الكراج أو المدير', 'error'); return; }
+        const t = el.querySelector(st.sel);
+        if (!t) return;
+        t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (t.matches('input,select,textarea')) t.focus({ preventScroll: true }); else t.click();
+      };
+      el.querySelector('[data-next]')?.addEventListener('click', () => doStep(nextStep));
+      el.querySelector('[data-next-alt]')?.addEventListener('click', () => doStep(nextStep.alt));
+      // hide the hint when this user can't do that step here
+      if (nextStep && !nextStep.info) {
+        const ok = nextStep.status ? !el.querySelector(`[data-status="${nextStep.status}"]`)?.disabled : !!el.querySelector(nextStep.sel);
+        if (!ok) el.querySelector('#next-step')?.remove();
+      }
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
       el.querySelectorAll('[data-decide]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {

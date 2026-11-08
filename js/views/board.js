@@ -35,7 +35,7 @@ export default async function board() {
 
   const lanes = LANES.map((s) => {
     const list = jobs.filter((j) => j.status === s);
-    return `<section class="lane" aria-label="${esc(STATUS[s].label)}">
+    return `<section class="lane" data-lane="${s}" aria-label="${esc(STATUS[s].label)}">
       <div class="lane-head"><span>${esc(STATUS[s].label)}</span><span class="count">${num(list.length)}</span></div>
       ${list.length ? list.map(card).join('') : '<div class="empty-lane">لا توجد سيارات</div>'}
     </section>`;
@@ -47,8 +47,21 @@ export default async function board() {
         <div><h1>${ctx.isTech ? 'سياراتي' : 'لوحة الورشة'}</h1><p class="lead">${num(jobs.length)} سيارة في الورشة${jobs.filter(isLate).length ? ` · ${num(jobs.filter(isLate).length)} متأخرة` : ''}</p></div>
         ${ctx.can('owner', 'manager', 'reception') ? `<a class="btn primary" href="#/intake">${icon('plus')} استلام سيارة</a>` : ''}
       </div>
-      ${jobs.length ? `<div class="board">${lanes}</div>` : `<div class="card empty"><p>${ctx.isTech ? 'لا توجد سيارات مسندة إليك الآن.' : 'الورشة فارغة.'}</p>${ctx.can('owner', 'manager', 'reception') ? '<a class="btn primary" href="#/intake">استلم سيارة</a>' : ''}</div>`}`,
+      ${jobs.length ? `<div class="lane-tabs" role="tablist" aria-label="المراحل">${LANES.map((s) => `<button type="button" role="tab" data-tab="${s}">${esc(STATUS[s].label)} <span class="count">${num(jobs.filter((j) => j.status === s).length)}</span></button>`).join('')}</div>
+        <div class="board">${lanes}</div>` : `<div class="card empty"><p>${ctx.isTech ? 'لا توجد سيارات مسندة إليك الآن.' : 'الورشة فارغة.'}</p>${ctx.can('owner', 'manager', 'reception') ? '<a class="btn primary" href="#/intake">استلم سيارة</a>' : ''}</div>`}`,
     bind(el) {
+      // phones: one stage at a time, chosen from the tabs
+      let cur = null;
+      try { cur = sessionStorage.getItem('emd-lane'); } catch { /* storage off */ }
+      if (!LANES.includes(cur) || !jobs.some((j) => j.status === cur)) cur = LANES.find((s) => jobs.some((j) => j.status === s)) || LANES[0];
+      const show = (s) => {
+        cur = s;
+        el.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === s)));
+        el.querySelectorAll('.lane').forEach((l) => l.classList.toggle('m-off', l.dataset.lane !== s));
+        try { sessionStorage.setItem('emd-lane', s); } catch { /* storage off */ }
+      };
+      show(cur);
+      el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
       el.addEventListener('click', async (ev) => {
         const b = ev.target.closest('[data-move]');
         if (!b) return;

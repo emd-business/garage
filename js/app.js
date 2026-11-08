@@ -4,6 +4,7 @@ import { auth, db } from './api.js';
 import { esc, ROLES } from './format.js';
 import { icon, toast, errMsg, formData, busy, field, passwordInput } from './ui.js';
 import { ctx, loadContext, switchBranch } from './state.js';
+import { fabHtml, runPendingQuick, helpButton, wireQuick } from './quick.js';
 
 import dashboard from './views/dashboard.js';
 import board from './views/board.js';
@@ -43,6 +44,23 @@ const NAV = [
 ];
 const canSee = (n) => (n.admin ? ctx.isAdmin : n.roles.includes(ctx.role));
 
+// What each role uses daily comes first; the rest sits under a second heading (and under "More" on phones)
+const PRIMARY = {
+  owner: ['', 'board', 'intake', 'appointments', 'customers', 'cash', 'inventory'],
+  manager: ['', 'board', 'intake', 'appointments', 'customers', 'cash', 'inventory'],
+  reception: ['', 'board', 'intake', 'appointments', 'customers', 'cash'],
+  accountant: ['', 'cash', 'customers', 'expenses', 'purchases', 'reports', 'accounting'],
+  storekeeper: ['inventory', 'purchases'],
+  technician: ['board'],
+};
+function navGroups() {
+  const items = NAV.filter(canSee);
+  const order = PRIMARY[ctx.role] || [];
+  const primary = order.map((k) => items.find((n) => n.key === k)).filter(Boolean);
+  const rest = items.filter((n) => !primary.includes(n));
+  return { primary: primary.length ? primary : items, rest: primary.length ? rest : [] };
+}
+
 const ROUTES = {
   '': dashboard, board, intake, job, print: printDoc, customers, customer: customerView, inventory, item: itemView, settings,
   appointments, purchases, expenses, cash, reports, pricing, more: moreView, accounting, ledger, statement, admin,
@@ -60,7 +78,8 @@ function homeFor(role) {
 }
 
 function shell(activeKey) {
-  const items = NAV.filter(canSee);
+  const { primary, rest } = navGroups();
+  const items = [...primary, ...rest];
   const link = (n, cls = '') => `<a href="${n.href}" class="${cls}" ${n.key === activeKey ? 'aria-current="page"' : ''}>${icon(n.icon)}<span>${esc(n.label)}</span></a>`;
   const left = ctx.garage.trial_ends_at ? Math.ceil((new Date(ctx.garage.trial_ends_at) - Date.now()) / 864e5) : null;
   const trial = ctx.garage.status === 'trial' ? `<div class="notice ${left !== null && left <= 7 ? 'warn' : 'info'}">${left === null ? 'نسخة تجريبية' : left > 0 ? `التجربة تنتهي بعد ${new Intl.NumberFormat(LOCALE).format(left)} يوماً` : 'انتهت الفترة التجريبية'}</div>` : '';
@@ -72,7 +91,8 @@ function shell(activeKey) {
       <div class="brand"><img src="assets/logo-on-dark.svg" alt="EMD Garage"></div>
       <div class="garage-name">${esc(ctx.garage.name)}</div>
       ${branchSel('on-side')}
-      <nav class="nav">${items.map((n) => link(n)).join('')}</nav>
+      <button type="button" class="side-search" data-search>${icon('search')}<span>ابحث</span><kbd>/</kbd></button>
+      <nav class="nav">${primary.map((n) => link(n)).join('')}${rest.length ? `<div class="nav-sep">الإدارة والحسابات</div>${rest.map((n) => link(n)).join('')}` : ''}</nav>
       <div class="foot">
         ${trial}
         <span>${esc(ctx.profile.full_name || '')} · ${esc(ROLES[ctx.role] || '')}</span>
@@ -84,10 +104,11 @@ function shell(activeKey) {
       <header class="topbar">
         <img src="assets/logo-on-dark.svg" alt="EMD Garage">
         <span class="garage-name">${esc(ctx.garage.name)}${branchSel('on-top')}</span>
-        <span class="row" style="gap:4px;flex-wrap:nowrap">${langButton('btn small ghost lang-btn')}<button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button></span>
+        <span class="row" style="gap:4px;flex-wrap:nowrap"><button type="button" class="btn ghost icon-btn" data-search aria-label="بحث" style="color:#fff">${icon('search')}</button>${langButton('btn small ghost lang-btn')}<button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button></span>
       </header>
       <main class="content" id="view" tabindex="-1"><div class="skeleton"></div></main>
       <nav class="bottomnav" aria-label="القائمة">${(items.length > 5 ? items.slice(0, 4) : items).map((n) => link(n)).join('')}${items.length > 5 ? `<a href="#/more" ${activeKey === 'more' || !items.slice(0, 4).some((n) => n.key === activeKey) ? 'aria-current="page"' : ''}>${icon('more')}<span>المزيد</span></a>` : ''}</nav>
+      ${fabHtml()}
     </div>
   </div>`;
 }
@@ -140,8 +161,11 @@ async function route() {
     const out = await view(params);
     if (seq !== renderSeq) return;
     el.innerHTML = out.html;
+    const head = el.querySelector('.page-head');
+    if (head && !head.querySelector('[data-help]')) head.insertAdjacentHTML('beforeend', helpButton(key));
     out.bind && out.bind(el);
     document.title = `${out.title ? `${out.title} · ` : ''}EMD Garage`;
+    runPendingQuick(el);
   } catch (e) {
     if (seq !== renderSeq) return;
     el.innerHTML = `<div class="notice error" role="alert">${esc(errMsg(e))}</div>`;
@@ -153,7 +177,8 @@ export function rerender() { delete root.dataset.active; route(); }
 
 // Phone-size menu with every section the role can open
 async function moreView() {
-  const items = NAV.filter(canSee);
+  const { primary, rest } = navGroups();
+  const items = [...primary.slice(4), ...rest];
   return {
     title: 'المزيد',
     html: `<div class="page-head"><div><h1>القائمة</h1><p class="lead">${esc(ctx.garage.name)} · ${esc(ROLES[ctx.role])}</p></div></div>
@@ -317,6 +342,7 @@ document.addEventListener('click', async (ev) => {
     renderAuth();
   }
 });
+wireQuick();
 window.addEventListener('hashchange', route);
 
 (async () => {
