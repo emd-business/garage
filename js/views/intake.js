@@ -5,7 +5,7 @@ import { ctx } from '../state.js';
 import { plateTag } from './dashboard.js';
 import { uploadMany, photoPicker } from '../media.js';
 
-const CHECKS = ['الإطار الاحتياطي', 'الرافعة والعدة', 'المفتاح الاحتياطي', 'المسجل والشاشة', 'خدوش ظاهرة', 'أغراض شخصية في السيارة'];
+export const DEFAULT_CHECKS = ['الإطار الاحتياطي', 'الرافعة والعدة', 'المفتاح الاحتياطي', 'المسجل والشاشة', 'خدوش ظاهرة', 'أغراض شخصية في السيارة'];
 
 export function vehicleFields(v = {}) {
   return `
@@ -28,6 +28,7 @@ export function vehicleRow(d) {
 }
 
 export default async function intake() {
+  const checks = Array.isArray(ctx.garage.intake_checks) && ctx.garage.intake_checks.length ? ctx.garage.intake_checks : DEFAULT_CHECKS;
   let picked = null; // { customer, vehicle } ; vehicle null = new vehicle for that customer ; customer null = all new
 
   const searchHtml = `<section class="card stack">
@@ -70,7 +71,7 @@ export default async function intake() {
           ${field('الفني المسؤول', `<select name="technician_id">${options(ctx.technicians.map((s) => [s.user_id, s.full_name]), '', { empty: 'لاحقاً' })}</select>`)}
           <div class="span-all stack" style="gap:8px"><span style="font-weight:600;font-size:14px">صور السيارة</span>${photoPicker('photos', 'صوّر السيارة')}<div id="intake-preview" class="photos"></div></div>
           <fieldset class="span-all" style="border:0;padding:0;margin:0"><legend style="font-weight:600;font-size:14px;margin-bottom:6px">فحص الاستلام</legend>
-            <div class="choice">${CHECKS.map((c2, i) => `<label><input type="checkbox" name="chk_${i}" value="${esc(c2)}"> ${esc(c2)}</label>`).join('')}</div>
+            <div class="choice">${checks.map((c2, i) => `<label><input type="checkbox" name="chk_${i}" value="${esc(c2)}"> ${esc(c2)}</label>`).join('')}</div>
           </fieldset>
         </div>
       </section>
@@ -135,7 +136,7 @@ export default async function intake() {
               }
             }
             const checklist = {};
-            CHECKS.forEach((c2, i) => { checklist[c2] = !!d[`chk_${i}`]; });
+            checks.forEach((c2, i) => { checklist[c2] = !!d[`chk_${i}`]; });
             const files = [...(form.querySelector('[name="photos"]').files || [])];
             const comeback = stage.querySelector('[name="comeback"]:checked');
             const job = await db.insert('job_orders', {

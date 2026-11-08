@@ -2,6 +2,7 @@ import { db } from '../api.js';
 import { idn, esc, money, num, round3, badge, STATUS, FLOW, METHODS, carName, plate, dateTime, toLocalInput, fromLocalInput, waLink, CONDITION as PART_COND, fitsVehicle, fitsText } from '../format.js';
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
+import { waText } from '../templates.js';
 import { plateTag, isLate } from './dashboard.js';
 import { uploadMany, photoGrid, photoPicker } from '../media.js';
 
@@ -52,6 +53,7 @@ export default async function job([id]) {
   const realPayments = payments.filter((p) => !p.deposit_id);
   const v = j.vehicles || {}, c = j.customers || {};
   const g = ctx.garage;
+  const waVars = { التحية: c.name ? `مرحباً ${c.name}،` : 'مرحباً،', العميل: c.name || '', السيارة: `${carName(v)}${plate(v) ? ` (${plate(v)})` : ''}`, الكراج: g.name, رقم_الأمر: j.job_no };
   const est = computeTotals(lines, g.vat_rate, inv ? Number(inv.discount) : 0);
   const stale = inv && realPayments.length === 0 && !credits.length && Math.abs(est.total - Number(inv.total)) > 0.0005;
   const locked = realPayments.length > 0 || credits.length > 0;
@@ -116,7 +118,7 @@ export default async function job([id]) {
       ${pending ? `<div class="notice warn">${num(pending)} بند بانتظار موافقة العميل</div>` : ''}
       <div class="row">
         ${editLines && !locked && lines.some((l) => l.approval_state === 'na') && !['delivered', 'cancelled'].includes(j.status) ? `<button class="btn primary" id="req-approval">${icon('wa')} اطلب موافقة العميل</button>` : ''}
-        ${c.phone ? `<a class="btn small wa" target="_blank" rel="noopener" href="${esc(waLink(c.phone, `${c.name ? `مرحباً ${c.name}، ` : ''}تابع سيارتك ${carName(v)} في ${g.name} من هذا الرابط:\n${portalUrl(j.public_token)}`))}">${icon('wa')} أرسل الرابط</a>` : ''}
+        ${c.phone ? `<a class="btn small wa" target="_blank" rel="noopener" href="${esc(waLink(c.phone, waText('tracking', { ...waVars, الرابط: portalUrl(j.public_token) })))}">${icon('wa')} أرسل الرابط</a>` : ''}
         <button class="btn small" id="copy-link">انسخ الرابط</button>
         <a class="btn small ghost" href="#/t/${esc(j.public_token)}" target="_blank" rel="noopener">معاينة</a>
       </div>
@@ -161,7 +163,7 @@ export default async function job([id]) {
       ${inv ? totalsHtml(inv, inv.paid, inv.balance) : totalsHtml(est)}
       ${stale ? '<div class="notice warn">تغيّرت البنود بعد إصدار الفاتورة. حدّثها قبل التحصيل.</div>' : ''}
       ${!inv || stale ? `<form id="issue" class="row" novalidate style="align-items:flex-end">
-          ${field('الخصم (ر.ع)', `<input name="discount" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(inv ? inv.discount : 0)}" style="max-width:140px">`)}
+          ${field('الخصم (ر.ع)', `<input name="discount" type="number" step="0.001" min="0" inputmode="decimal" value="${esc(inv ? inv.discount : 0)}" style="max-width:140px">`, ctx.role === 'reception' && g.max_discount_pct != null ? { hint: `أقصى خصم لك ${num(g.max_discount_pct)}٪ = ${money(round3((est.labor + est.parts) * Number(g.max_discount_pct) / 100))}` } : {})}
           <button class="btn primary" ${lines.length ? '' : 'disabled'}>${inv ? 'حدّث الفاتورة' : 'أصدر الفاتورة'}</button>
         </form>` : ''}
       ${inv && Number(inv.balance) > 0.0005 && !stale ? `<form id="pay" class="stack" novalidate>
@@ -177,7 +179,7 @@ export default async function job([id]) {
       ${credits.length ? `<div><h3>الإشعارات الدائنة</h3><div class="list">${credits.map((x) => `<div class="list-item" style="flex-wrap:wrap;row-gap:6px"><span style="flex:1 1 160px">إشعار ${idn(x.credit_no)} · ${esc(x.reason)}<br><span class="subtle">${esc(dateTime(x.issued_at))}${Number(x.refund_amount) ? ` · رُدّ للعميل ${money(x.refund_amount)} ${esc(METHODS[x.refund_method] || '')}` : ''}</span></span>
           <span class="row" style="gap:6px;flex-wrap:nowrap"><strong>− ${money(x.total)}</strong><a class="btn small ghost" href="#/print/${j.id}/credit/${x.id}" target="_blank" rel="noopener" aria-label="اطبع الإشعار ${idn(x.credit_no)}">${icon('print')}</a><button type="button" class="btn small ghost" data-xml-cn="${x.id}" aria-label="ملف XML للإشعار ${idn(x.credit_no)}">XML</button></span></div>`).join('')}</div></div>` : ''}
       ${deposits.length ? `<div><h3>العربون</h3><div class="list">${deposits.map((x) => `<div class="list-item" style="flex-wrap:wrap;row-gap:6px"><span style="flex:1 1 160px">سند ${idn(x.receipt_no)} · ${esc(METHODS[x.method])}<br><span class="subtle">${esc(dateTime(x.paid_at))}${Number(x.applied) ? ` · خُصم من الفاتورة ${money(x.applied)}` : ''}${Number(x.refunded) ? ` · رُدّ ${money(x.refunded)}` : ''}</span></span>
-          <span class="row" style="gap:6px;flex-wrap:nowrap"><strong>${money(x.amount)}</strong>${Number(x.remaining) > 0.0005 && ctx.can('owner', 'manager', 'accountant') ? `<button type="button" class="btn small ghost" data-refund-dep="${x.id}">ردّ ${money(x.remaining)}</button>` : ''}</span></div>`).join('')}</div>
+          <span class="row" style="gap:6px;flex-wrap:nowrap"><strong>${money(x.amount)}</strong>${Number(x.remaining) > 0.0005 && (ctx.can('owner', 'manager', 'accountant') || (ctx.can('reception') && g.reception_refunds)) ? `<button type="button" class="btn small ghost" data-refund-dep="${x.id}">ردّ ${money(x.remaining)}</button>` : ''}</span></div>`).join('')}</div>
           ${!inv && deposits.some((x) => Number(x.remaining) > 0.0005) ? '<p class="subtle">يُخصم العربون تلقائياً عند إصدار الفاتورة.</p>' : ''}</div>` : ''}
       ${!['delivered', 'cancelled'].includes(j.status) && (!inv || Number(inv.balance) > 0.0005) ? '<div><button type="button" class="btn small" id="deposit">عربون مقدّم</button></div>' : ''}
       ${inv ? `<div class="row" style="gap:8px">
@@ -192,14 +194,12 @@ export default async function job([id]) {
 
   // WhatsApp templates
   const total = inv ? inv.total : est.total;
-  const who = c.name ? `مرحباً ${c.name}،` : 'مرحباً،';
-  const car = `${carName(v)}${plate(v) ? ` (${plate(v)})` : ''}`;
   const msgs = [
-    ['تم الاستلام', `${who} استلمنا سيارتك ${car} في ${g.name}. رقم أمر العمل ${j.job_no}.${j.promised_at ? ` موعد التسليم المتوقع ${dateTime(j.promised_at)}.` : ''}`],
-    ['طلب موافقة', `${who} انتهينا من فحص سيارتك ${car}.${j.diagnosis ? `\nالتشخيص: ${j.diagnosis}` : ''}\nالتكلفة التقديرية ${money(total)} شاملة الضريبة.\nهل توافق على البدء في الإصلاح؟`],
-    ['السيارة جاهزة', `${who} سيارتك ${car} جاهزة للاستلام من ${g.name}.${inv ? ` المبلغ المستحق ${money(inv.balance)}.` : ''}`],
-    ...(inv ? [['الفاتورة', `${who} فاتورة رقم ${inv.invoice_no} من ${g.name} بمبلغ ${money(inv.total)}. المدفوع ${money(inv.paid)}، والمتبقي ${money(inv.balance)}. شكراً لثقتك.`]] : []),
-    ...(j.next_service_km || j.next_service_date ? [['تذكير الصيانة', `${who} نذكّرك بموعد الصيانة القادمة لسيارتك ${car}${j.next_service_km ? ` عند ${j.next_service_km} كم` : ''}${j.next_service_date ? ` أو بتاريخ ${j.next_service_date}` : ''}. يسعدنا خدمتك في ${g.name}.`]] : []),
+    ['تم الاستلام', waText('received', { ...waVars, موعد_التسليم: j.promised_at ? ` موعد التسليم المتوقع ${dateTime(j.promised_at)}.` : '' })],
+    ['طلب موافقة', waText('estimate', { ...waVars, التشخيص: j.diagnosis ? `\nالتشخيص: ${j.diagnosis}` : '', المبلغ: money(total) })],
+    ['السيارة جاهزة', waText('ready', { ...waVars, المتبقي: inv && Number(inv.balance) > 0.0005 ? ` المبلغ المستحق ${money(inv.balance)}.` : '' })],
+    ...(inv ? [['الفاتورة', waText('invoice', { ...waVars, رقم_الفاتورة: inv.invoice_no, المبلغ: money(inv.total), المدفوع: money(inv.paid), الباقي: money(inv.balance) })]] : []),
+    ...(j.next_service_km || j.next_service_date ? [['تذكير الصيانة', waText('reminder', { ...waVars, موعد_الصيانة: `${j.next_service_km ? ` عند ${j.next_service_km} كم` : ''}${j.next_service_date ? ` أو بتاريخ ${j.next_service_date}` : ''}` })]] : []),
   ];
   const waCard = office && c.phone ? `<section class="card stack"><h2>رسائل واتساب</h2>
       <div class="row">${msgs.map(([l, t]) => `<a class="btn small wa" href="${esc(waLink(c.phone, t))}" target="_blank" rel="noopener">${icon('wa')} ${esc(l)}</a>`).join('')}</div></section>` : '';
@@ -245,7 +245,7 @@ export default async function job([id]) {
       }));
       el.querySelector('#req-approval')?.addEventListener('click', (ev) => busy(ev.currentTarget, async () => {
         const token = await db.rpc('request_approval', { p_job: j.id });
-        const msg = `${c.name ? `مرحباً ${c.name}، ` : ''}انتهينا من فحص سيارتك ${carName(v)} في ${g.name}. راجع ما وجدناه والأسعار، ووافق على ما تريد إصلاحه من هذا الرابط:\n${portalUrl(token)}`;
+        const msg = waText('approval', { ...waVars, الرابط: portalUrl(token) });
         if (c.phone) window.open(waLink(c.phone, msg), '_blank', 'noopener');
         toast('أُرسل طلب الموافقة'); reload();
       }));
@@ -388,7 +388,7 @@ export default async function job([id]) {
           } else {
             d.querySelector('[name="unit_price"]').value = Number(x.sell_price).toFixed(3);
             const fitNote = (x.fits || []).length && !fitsVehicle(x.fits, v) ? ` · تنبيه: هذه القطعة مسجّلة لـ ${fitsText(x.fits)}` : '';
-            d.querySelector('#stock-hint').textContent = (Number(x.qty) <= 0 ? 'تنبيه: الصنف نافد في المخزون، وستصبح الكمية بالسالب.' : `المتوفر ${num(x.qty)}`) + fitNote;
+            d.querySelector('#stock-hint').textContent = (Number(x.qty) <= 0 ? (g.allow_negative_stock === false ? 'الصنف نافد في هذا الفرع، ولا يمكن صرفه حتى يُشترى أو يُحوَّل.' : 'تنبيه: الصنف نافد في المخزون، وستصبح الكمية بالسالب.') : `المتوفر ${num(x.qty)}`) + fitNote;
           }
         });
       }));

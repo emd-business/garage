@@ -4,6 +4,7 @@ import { icon, toast, field, options, formData, busy, openDialog } from '../ui.j
 import { ctx, refreshGarage } from '../state.js';
 import { uploadImage } from '../media.js';
 import { readiness } from '../einvoice.js';
+import { ownerCards, bindOwner } from './settings-owner.js';
 
 let itemsForReady = [];
 export default async function settings() {
@@ -23,7 +24,8 @@ export default async function settings() {
 
   return {
     title: 'الإعدادات',
-    html: `<div class="page-head"><div><h1>إعدادات الكراج</h1><p class="lead">تظهر هذه البيانات على الفواتير وعروض الأسعار.</p></div></div>
+    html: `<div class="page-head"><div><h1>إعدادات الكراج</h1><p class="lead">بيانات الكراج، وقواعد العمل التي تقررها أنت.</p></div></div>
+      <nav class="jump" aria-label="أقسام الإعدادات">${[['garage', 'البيانات'], ['printing', 'الطباعة'], ['docs', 'المستندات'], ['controls', 'الصلاحيات'], ['service', 'الاستلام'], ['wa', 'الرسائل'], ['fawtara', 'فوترة'], ['svcs', 'الخدمات'], ['branches', 'الفروع'], ['team', 'الفريق']].map(([id, t]) => `<a href="#" data-jump="${id}">${t}</a>`).join('')}</nav>
 
       <form class="card stack" id="garage" novalidate>
         <h2>بيانات الكراج</h2>
@@ -57,13 +59,15 @@ export default async function settings() {
         <p class="subtle">ومن صفحة أمر العمل تطبع أيضاً «كرت الورشة» للفني: بيانات السيارة والشكوى والأعمال المطلوبة بلا أسعار.</p>
       </section>
 
+      ${ownerCards(g)}
+
       <section class="card stack" id="fawtara">
         <div class="card-head" style="margin:0"><h2>جاهزية الفوترة الإلكترونية (فوترة)</h2><span class="badge ${ready.every((r) => r.ok) ? 'success' : 'warning'}">${num(ready.filter((r) => r.ok).length)} من ${num(ready.length)}</span></div>
         <p class="subtle">تُلزم هيئة الضرائب الكراجات بالفوترة الإلكترونية على مراحل، وتبدأ للمنشآت الأصغر من ١ أكتوبر ٢٠٢٧. أكمل هذه البيانات من الآن، وعند التعاقد مع مزوّد معتمد يُرسل النظام فواتيرك إليه. وتستطيع من صفحة الفاتورة تنزيل ملفها بصيغة الفوترة (XML).</p>
         <div class="list">${ready.map((r) => `<div class="list-item"><span>${r.ok ? '<span class="badge success">مكتمل</span>' : '<span class="badge warning">ناقص</span>'} ${esc(r.label)}${r.count ? ` <span class="subtle">(${num(r.count[0])} من ${num(r.count[1])})</span>` : ''}</span>${r.ok ? '' : `<span class="subtle">${esc(r.fix)}</span>`}</div>`).join('')}</div>
       </section>
 
-      <section class="card pad-0">
+      <section class="card pad-0" id="svcs">
         <div class="card-head" style="padding:16px 20px 0"><h2>الخدمات والأسعار</h2><button class="btn small" id="add-svc">${icon('plus')} خدمة</button></div>
         <p class="subtle" style="padding:0 20px">إن تركت السعر صفراً يُحسب من الساعات × سعر ساعة العمل (${money(g.labor_rate)}).</p>
         <div class="table-wrap"><table>
@@ -76,7 +80,7 @@ export default async function settings() {
         </table></div>
       </section>
 
-      <section class="card pad-0">
+      <section class="card pad-0" id="branches">
         <div class="card-head" style="padding:16px 20px 0"><h2>الفروع ${lim ? usage(lim.branches, lim.max_branches, 'فروع') : ''}</h2><button class="btn small" id="add-br" ${fullBranches ? 'disabled title="وصلت إلى حد الفروع في باقتك"' : ''}>${icon('plus')} فرع</button></div>
         <p class="subtle" style="padding:0 20px">لكل فرع أوامر عمله ومواعيده ومخزونه ومصروفاته، والعملاء والأصناف والحسابات مشتركة بين الفروع.</p>
         <div class="table-wrap"><table>
@@ -88,7 +92,7 @@ export default async function settings() {
         </table></div>
       </section>
 
-      <section class="card pad-0">
+      <section class="card pad-0" id="team">
         <div class="card-head" style="padding:16px 20px 0"><h2>الفريق ${lim ? usage(lim.users, lim.max_users, 'مستخدمين') : ''}</h2><button class="btn small teal" id="invite" ${fullUsers ? 'disabled title="وصلت إلى حد المستخدمين في باقتك"' : ''}>${icon('plus')} ادعُ موظفاً</button></div>
         <div class="table-wrap"><table>
           <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th>${ctx.multiBranch ? '<th>الفرع</th>' : ''}<th>الحالة</th></tr></thead>
@@ -105,6 +109,8 @@ export default async function settings() {
       </section>`,
     bind(el) {
       const reload = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+      bindOwner(el, g);
+      el.querySelectorAll('[data-jump]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); el.querySelector(`#${a.dataset.jump}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
       el.querySelector('#garage').addEventListener('submit', (ev) => {
         ev.preventDefault();
         const f = ev.target; if (!f.reportValidity()) return;

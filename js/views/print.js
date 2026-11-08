@@ -133,10 +133,12 @@ export default async function printDoc([id, fmt, cnId]) {
         ${isInvoice ? `<span>المدفوع</span><span>${money(inv.paid)}</span><strong>المتبقي</strong><strong>${money(inv.balance)}</strong>` : ''}
       </div>
       ${payments.length ? `<div class="r-small">${payments.map((p) => `سند ${idn(p.receipt_no)} · ${esc(METHODS[p.method])} · ${money(p.amount)}`).join('<br>')}</div>` : ''}
+      ${g.invoice_terms ? `<div class="r-small">${esc(g.invoice_terms).replace(/\n/g, '<br>')}</div>` : ''}
       <footer>شكراً لثقتكم<br><img src="assets/logo.svg" alt="EMD Garage"></footer>
     </article>` };
   }
 
+  const terms = g.invoice_terms ? `<div class="terms"><strong>الشروط والأحكام</strong><br>${esc(g.invoice_terms).replace(/\n/g, '<br>')}</div>` : '';
   const html = `${bar}
     <article class="doc">
       <header class="doc-head">
@@ -191,9 +193,10 @@ export default async function printDoc([id, fmt, cnId]) {
       <div class="words"><strong>المبلغ كتابةً:</strong> ${esc(amountWords(t.total))}</div>
 
       ${payments.length ? `<div style="font-size:10.5pt"><strong>الدفعات:</strong> ${payments.map((p) => `سند ${idn(p.receipt_no)} · ${p.deposit_id ? 'عربون' : esc(METHODS[p.method])}${p.payer === 'insurer' ? ' · التأمين' : ''} · ${money(p.amount)} · ${esc(date(p.paid_at))}`).join(' — ')}</div>` : ''}
-      ${!isInvoice ? '<div style="font-size:10.5pt">هذا العرض تقديري، وقد تتغير التكلفة إن ظهرت أعمال إضافية بعد الفحص، ولن تُنفَّذ إلا بموافقتك.</div>' : ''}
+      ${!isInvoice ? `<div style="font-size:10.5pt">هذا العرض تقديري، وقد تتغير التكلفة إن ظهرت أعمال إضافية بعد الفحص، ولن تُنفَّذ إلا بموافقتك.${Number(g.quote_valid_days) > 0 ? ` العرض صالح حتى ${esc(date(new Date(Date.now() + Number(g.quote_valid_days) * 864e5)))}.` : ''}</div>` : ''}
+      ${terms}
 
-      <div class="sign"><div>توقيع العميل</div><div>الختم والتوقيع</div></div>
+      <div class="sign"><div>توقيع العميل</div><div>${g.stamp_url ? `<img class="stamp" src="${esc(g.stamp_url)}" alt="">` : ''}الختم والتوقيع</div></div>
 
       <footer class="doc-foot">
         <span>شكراً لثقتكم بـ ${esc(g.name)}</span>

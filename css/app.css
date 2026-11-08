@@ -254,6 +254,10 @@ dialog .dialog-actions { display: flex; gap: 10px; justify-content: flex-start; 
 .doc-foot img { height: 26px; }
 .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 18px; font-size: 11pt; }
 .sign div { border-top: 1px dashed #7C8797; padding-top: 6px; text-align: center; }
+.sign div { position: relative; }
+.sign:has(.stamp) { margin-top: 90px; }
+.sign .stamp { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); height: 72px; max-width: 160px; object-fit: contain; }
+.terms { font-size: 9.5pt; color: #3d4757; border: 1px solid #d9dee5; border-radius: 6px; padding: 8px 10px; margin-top: 10px; line-height: 1.6; }
 .print-bar { display: flex; gap: 10px; justify-content: center; align-items: center; padding: 16px; flex-wrap: wrap; }
 .print-bar .seg { display: inline-flex; gap: 4px; }
 .card-doc .big-no { font-size: 26pt; font-weight: 700; color: #0B1E33; line-height: 1.1; }
@@ -330,3 +334,17 @@ html[lang="en"] .doc-title small { display: none; }
 @media (max-width: 560px) { .fit-row { grid-template-columns: 1fr 1fr auto; } .fit-row [data-fit="year_from"] { grid-column: 1; } .fit-row [data-fit="year_to"] { grid-column: 2; } .fit-row [data-fit-del] { grid-row: 1 / span 2; grid-column: 3; } }
 svg.i-car { width: 16px; height: 16px; vertical-align: -3px; flex: none; }
 td .fit-line { display: inline-block; min-width: 140px; }
+
+/* settings: owner controls */
+.jump { display: flex; gap: 6px; flex-wrap: wrap; position: sticky; top: 0; z-index: 3; background: var(--surface-page); padding: 8px 0; }
+.jump a { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-card); font-size: 13px; color: var(--ink); text-decoration: none; }
+.jump a:hover { border-color: var(--gold); }
+.card[id] { scroll-margin-top: 64px; }
+.toggle-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.toggle-row input { width: 20px; height: 20px; min-height: 0; margin-top: 2px; flex: none; accent-color: var(--chrome-bg); }
+.toggle-row span { display: flex; flex-direction: column; gap: 2px; }
+.wa-tpl { border-top: 1px solid var(--border); padding-top: 12px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.chip { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px dashed var(--border); background: transparent; color: var(--ink-muted); cursor: pointer; }
+.chip:hover { border-style: solid; color: var(--ink); }
+@media (max-width: 860px) { .jump { position: static; flex-wrap: nowrap; overflow-x: auto; } .jump a { white-space: nowrap; } }

@@ -3,6 +3,7 @@ import { db, like } from '../api.js';
 import { esc, num, idn, carName, dateTime, date, toLocalInput, fromLocalInput, waLink } from '../format.js';
 import { icon, toast, field, options, openDialog, busy } from '../ui.js';
 import { ctx } from '../state.js';
+import { waText } from '../templates.js';
 import { plateTag } from './dashboard.js';
 import { vehicleFields, vehicleRow } from './intake.js';
 
@@ -49,7 +50,7 @@ export default async function appointments([day]) {
   const g = ctx.garage;
 
   const row = (a) => {
-    const confirmMsg = `مرحباً ${a.name}، نؤكد موعدك في ${g.name} ${dateTime(a.starts_at)}${a.service ? ` لـ${a.service}` : ''}. نتشرف بزيارتك.`;
+    const confirmMsg = waText('appointment', { العميل: a.name, الكراج: g.name, الموعد: dateTime(a.starts_at), الخدمة: a.service ? ` لـ${a.service}` : '' });
     const open = ['booked', 'confirmed'].includes(a.status);
     return `<div class="list-item" style="align-items:flex-start">
       <div class="stack" style="gap:2px">
@@ -69,7 +70,7 @@ export default async function appointments([day]) {
 
   const dueRow = (r, i) => {
     const late = r.next_service_date && new Date(r.next_service_date) < new Date();
-    const msg = `مرحباً ${r.customer_name}، حان موعد الصيانة القادمة لسيارتك ${[r.make, r.model].filter(Boolean).join(' ')}${r.next_service_km ? ` (عند ${r.next_service_km} كم)` : ''}. يسعدنا حجز موعد لك في ${g.name}.`;
+    const msg = waText('reminder', { التحية: `مرحباً ${r.customer_name}،`, العميل: r.customer_name, السيارة: [r.make, r.model].filter(Boolean).join(' '), الكراج: g.name, موعد_الصيانة: r.next_service_km ? ` (عند ${r.next_service_km} كم)` : '' });
     return `<div class="list-item">
       <span class="row" style="gap:10px">${plateTag(r)} <span><strong>${esc(carName(r))}</strong> · ${esc(r.customer_name)}<br>
         <span class="subtle">${r.next_service_date ? `${late ? '<span class="badge danger">متأخرة</span> ' : ''}${esc(date(r.next_service_date))}` : ''}${r.next_service_km ? ` · عند ${num(r.next_service_km)} كم` : ''}</span></span></span>

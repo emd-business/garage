@@ -15,11 +15,15 @@ export const isLate = (j) => j.promised_at && !['ready', 'delivered', 'cancelled
 
 export default async function dashboard() {
   const dayStart = new Date(`${new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10)}T00:00:00+04:00`);
-  const [k, jobs, appts] = await Promise.all([
+  const cashAlert = ctx.garage.cash_close_alert !== false && ctx.can('owner', 'manager', 'accountant', 'reception');
+  const [k, jobs, appts, cash] = await Promise.all([
     db.rpc('dashboard_today'),
     db.get('job_orders', { ...ctx.here, select: JOB_SELECT, status: 'not.in.(delivered,cancelled)', order: 'promised_at.asc.nullslast', limit: 50 }),
     ctx.can('owner', 'manager', 'reception') ? db.get('appointments', { ...ctx.here, select: 'id', status: 'in.(booked,confirmed)', starts_at: `gte.${dayStart.toISOString()}`, and: `(starts_at.lt.${new Date(dayStart.getTime() + 864e5).toISOString()})` }).catch(() => []) : [],
+    cashAlert ? db.rpc('cash_status', {}).catch(() => null) : null,
   ]);
+  // cash taken before today and still not closed
+  const openCash = cash && cash.first_move && new Date(cash.first_move) < dayStart;
   const by = (k && k.by_status) || {};
   const inShop = Object.values(by).reduce((a, b) => a + Number(b), 0);
   const late = jobs.filter(isLate);
@@ -40,6 +44,7 @@ export default async function dashboard() {
       <div><h1>اليوم في ${esc(ctx.garage.name)}</h1><p class="lead">${esc(new Intl.DateTimeFormat(LOCALE, { timeZone: 'Asia/Muscat', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()))}</p></div>
       ${ctx.can('owner', 'manager', 'reception') ? `<a class="btn primary" href="#/intake">${icon('plus')} استلام سيارة</a>` : ''}
     </div>
+    ${openCash ? `<a class="notice warn" href="#/cash" style="display:block">لم يُقفَل الصندوق منذ ${esc(dateTime(cash.first_move))}. اعدد النقد وأقفله.</a>` : ''}
     <div class="kpis">
       ${tile('في الورشة', num(inShop), '#/board')}
       ${tile('متأخرة عن الموعد', num(k?.overdue || 0), '#/board', (k?.overdue || 0) > 0)}
