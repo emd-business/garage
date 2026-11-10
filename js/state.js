@@ -33,13 +33,13 @@ export const ctx = {
 export async function loadContext() {
   ctx.profile = await db.one('profiles', { id: `eq.${ctx.uid}`, select: '*' });
   ctx.garage = null; ctx.role = null; ctx.staff = []; ctx.branches = []; ctx.allBranches = []; ctx.branch = null; ctx.branchLocked = false;
+  ctx.isAdmin = !!(await db.rpc('is_platform_admin').catch(() => false));
   if (!ctx.profile || !ctx.profile.current_garage_id) return ctx;
   const [garage, role] = await Promise.all([
     db.one('garages', { id: `eq.${ctx.profile.current_garage_id}`, select: '*' }),
     db.rpc('my_role'),
   ]);
   ctx.garage = garage; ctx.role = role;
-  ctx.isAdmin = !!(await db.rpc('is_platform_admin').catch(() => false));
   if (role) {
     const [staff, branches, cur] = await Promise.all([
       db.rpc('garage_staff'),

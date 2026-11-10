@@ -131,6 +131,8 @@ async function route() {
   if (r0.key === 't') return renderPortal(r0.params);
   if (!auth.session) return renderAuth();
   if (ctx.garage && !ctx.role && ctx.garage.status === 'suspended') return renderSuspended();
+  // the platform account has no garage of its own: it sees the EMD admin page only
+  if ((!ctx.garage || !ctx.role) && ctx.isAdmin) return renderAdminOnly();
   if (!ctx.garage || !ctx.role) return renderOnboarding();
   const { key, params } = parseRoute();
   const view = ROUTES[key];
@@ -266,6 +268,26 @@ function renderSuspended() {
 }
 
 // ---------- Onboarding: create a garage or join one ----------
+async function renderAdminOnly() {
+  const seq = ++renderSeq;
+  if (!document.querySelector('.admin-only')) {
+    root.dataset.active = 'admin-only';
+    root.innerHTML = `<div class="admin-only">
+      <header class="admin-bar"><img src="assets/logo-on-dark.svg" alt="EMD Garage"><span class="who">${esc(ctx.profile?.full_name || '')}</span>
+        <span class="row" style="gap:4px;flex-wrap:nowrap">${langButton('btn small ghost lang-btn')}<button class="btn small ghost" data-signout style="color:#fff">${icon('out')} تسجيل الخروج</button></span></header>
+      <main class="content" id="view"></main></div>`;
+  }
+  const el = document.getElementById('view');
+  el.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  try {
+    const out = await admin();
+    if (seq !== renderSeq) return;
+    el.innerHTML = out.html;
+    out.bind && out.bind(el);
+    document.title = 'إدارة EMD · EMD Garage';
+  } catch (e) { if (seq === renderSeq) el.innerHTML = `<div class="notice error" role="alert">${esc(errMsg(e))}</div>`; }
+}
+
 function renderOnboarding() {
   delete root.dataset.active;
   document.title = 'EMD Garage · ابدأ';

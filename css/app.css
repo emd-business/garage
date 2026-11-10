@@ -424,3 +424,8 @@ dialog.sign-dialog { width: min(680px, calc(100vw - 24px)); }
 .count-table tr.diff-minus .diff { color: var(--danger-ink); font-weight: 700; }
 .count-foot { position: sticky; bottom: 0; z-index: 2; }
 @media (max-width: 860px) { .count-foot { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); } }
+/* platform account without a garage */
+.admin-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 24px; background: var(--chrome-bg); color: var(--chrome-ink); }
+.admin-bar img { height: 30px; }
+.admin-bar .who { flex: 1; color: var(--chrome-muted); font-size: 14px; }
+.admin-only .content { max-width: 1280px; margin-inline: auto; }
