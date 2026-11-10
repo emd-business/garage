@@ -22,7 +22,7 @@ export function vehicleFields(v = {}) {
     ${field('الشركة المصنعة', `<input name="make" list="makes" value="${esc(v.make || '')}" required>`, { req: true })}
     ${field('الطراز', `<input name="model" list="models" autocomplete="off" value="${esc(v.model || '')}" placeholder="اختر من القائمة أو اكتبه">`)}
     ${field('سنة الصنع', `<input name="year" type="number" inputmode="numeric" min="1960" max="2030" value="${esc(v.year || '')}">`)}
-    ${field('رقم الشاصي (VIN)', `<span class="row" style="gap:6px;flex-wrap:nowrap"><input name="vin" dir="ltr" maxlength="17" autocapitalize="characters" value="${esc(v.vin || '')}">${scanButton('[name=vin]', 'امسح')}</span>`)}
+    ${field('رقم الشاصي (VIN)', `<span class="row" style="gap:6px;flex-wrap:nowrap"><input name="vin" dir="ltr" maxlength="17" autocapitalize="characters" value="${esc(v.vin || '')}">${scanButton('[name=vin]', 'امسح الباركود')}</span>`)}
     ${field('اللون', `<input name="color" value="${esc(v.color || '')}">`)}
     <datalist id="makes">${MAKES.map((m) => `<option value="${esc(m)}">`).join('')}</datalist>
     <datalist id="models" data-models>${modelsFor(v.make).map((m) => `<option value="${esc(m)}">`).join('')}</datalist>`;

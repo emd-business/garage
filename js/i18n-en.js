@@ -1,5 +1,6 @@
 // Arabic → English UI dictionary (generated from the app source; longest phrases are applied first)
 export default {
+"امسح الباركود": "Scan barcode",
 "لغة المستندات المطبوعة": "Printed document language",
 "العربية": "Arabic",
 "الفاتورة وعرض السعر والإيصالات تُطبع بهذه اللغة مهما كانت لغة الشاشة.": "Invoices, quotes and receipts print in this language whatever the screen language.",
