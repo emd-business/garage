@@ -2,6 +2,7 @@ import { db } from '../api.js';
 import { esc, money, num, idn, dateTime, date, MAKES, CONDITION, fitsText } from '../format.js';
 import { icon, toast, field, openDialog } from '../ui.js';
 import { ctx } from '../state.js';
+import { uploadImage } from '../media.js';
 
 const stockBadge = (it) => {
   if (Number(it.qty) <= 0) return '<span class="badge danger">نفد</span>';
@@ -29,6 +30,10 @@ const itemFields = (it = {}) => `
   ${field('الضمان (يوم)', `<input name="warranty_days" type="number" step="1" min="0" inputmode="numeric" value="${esc(it.warranty_days ?? 0)}">`)}
   ${field('رمز التصنيف الجمركي HS', `<input name="hs_code" dir="ltr" inputmode="numeric" pattern="[0-9]{6,12}" value="${esc(it.hs_code || '')}" placeholder="870830">`, { hint: 'للفوترة الإلكترونية، من ٦ إلى ١٢ رقماً' })}
   ${field('حد إعادة الطلب', `<input name="reorder_level" type="number" step="1" min="0" inputmode="numeric" value="${esc(it.reorder_level ?? 0)}">`, { hint: 'ينبّهك النظام عند الوصول إليه' })}
+  <div class="span-all row" style="gap:12px;align-items:center">
+    ${it.image_url ? `<img class="item-thumb lg" src="${esc(it.image_url)}" alt="">` : ''}
+    ${field(it.image_url ? 'غيّر صورة القطعة' : 'صورة القطعة', '<input name="image" type="file" accept="image/*" capture="environment">', { hint: 'اختياري. تساعد على تمييز القطع المتشابهة.' })}
+  </div>
   <fieldset class="span-all fits"><legend>السيارات المناسبة لهذه القطعة</legend>
     <p class="subtle">اتركها فارغة إن كانت القطعة تناسب كل السيارات. الموديل والسنوات اختيارية.</p>
     <div id="fit-rows">${(it.fits && it.fits.length ? it.fits : [{}]).map(fitRow).join('')}</div>
@@ -56,6 +61,11 @@ const bindFits = (dlg) => {
   });
 };
 
+const withImage = async (row, dlg) => {
+  const f = dlg.querySelector('[name=image]')?.files[0];
+  if (f) row.image_url = await uploadImage(f, 'items');
+  return row;
+};
 const toRow = (d, dlg) => ({
   condition: d.condition || 'new', fits: readFits(dlg),
   name: d.name, sku: d.sku, category: d.category, location: d.location,
@@ -94,7 +104,7 @@ export default async function inventory() {
       </div>
       <section class="card pad-0">${items.length ? `<div class="table-wrap"><table>
         <thead><tr><th>الصنف</th><th>الفئة</th><th>المكان</th><th class="num">${ctx.multiBranch ? 'في هذا الفرع' : 'الكمية'}</th>${ctx.multiBranch ? '<th class="num">كل الفروع</th>' : ''}<th>الحالة</th>${seeCost ? '<th class="num">التكلفة</th>' : ''}<th class="num">سعر البيع</th>${canEdit ? '<th><span class="hidden">إجراءات</span></th>' : ''}</tr></thead>
-        <tbody>${items.map((it) => `<tr data-cond="${esc(it.condition || 'new')}" data-name="${esc(`${it.name} ${it.sku || ''} ${fitsText(it.fits)}`.toLowerCase())}"><td><a href="#/item/${it.id}"><strong>${esc(it.name)}</strong></a>${it.condition && it.condition !== 'new' ? ` <span class="badge ${CONDITION[it.condition][1]}">${CONDITION[it.condition][0]}</span>` : ''}${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}${(it.fits || []).length ? `<br><span class="subtle fit-line">${icon('car')} ${esc(fitsText(it.fits))}</span>` : ''}</td>
+        <tbody>${items.map((it) => `<tr data-cond="${esc(it.condition || 'new')}" data-name="${esc(`${it.name} ${it.sku || ''} ${fitsText(it.fits)}`.toLowerCase())}"><td>${it.image_url ? `<img class="item-thumb" src="${esc(it.image_url)}" alt="" loading="lazy">` : ''}<a href="#/item/${it.id}"><strong>${esc(it.name)}</strong></a>${it.condition && it.condition !== 'new' ? ` <span class="badge ${CONDITION[it.condition][1]}">${CONDITION[it.condition][0]}</span>` : ''}${it.sku ? `<br><bdi class="subtle ltr">${esc(it.sku)}</bdi>` : ''}${(it.fits || []).length ? `<br><span class="subtle fit-line">${icon('car')} ${esc(fitsText(it.fits))}</span>` : ''}</td>
           <td>${esc(it.category || '')}</td><td>${esc(it.location || '')}</td><td class="num">${num(it.qty)}</td>${ctx.multiBranch ? `<td class="num subtle">${num(it.total)}</td>` : ''}<td>${stockBadge(it)}</td>
           ${seeCost ? `<td class="num">${money(it.unit_cost)}</td>` : ''}<td class="num">${money(it.sell_price)}</td>
           ${canEdit ? `<td><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn small" data-adjust="${it.id}">الكمية</button>${ctx.multiBranch && !ctx.branchLocked ? `<button class="btn small" data-move="${it.id}">تحويل</button>` : ''}<button class="btn small ghost" data-edit="${it.id}">تعديل</button></div></td>` : ''}</tr>`).join('')}</tbody></table></div>`
@@ -109,7 +119,7 @@ export default async function inventory() {
       el.querySelector('#cond').addEventListener('change', filter);
       el.querySelector('#add')?.addEventListener('click', () => {
         const dlg = openDialog('صنف جديد', `<div class="grid form">${itemFields()}</div>`, async (d) => {
-          const it = await db.insert('items', { ...toRow(d, dlg), qty: Number(d.qty || 0) });
+          const it = await db.insert('items', await withImage({ ...toRow(d, dlg), qty: Number(d.qty || 0) }, dlg));
           if (Number(d.qty) > 0) await db.insert('stock_movements', { item_id: it.id, qty: Number(d.qty), reason: 'رصيد افتتاحي' });
           toast('أُضيف الصنف'); reload();
         });
@@ -118,7 +128,7 @@ export default async function inventory() {
       el.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
         const it = items.find((x) => x.id === b.dataset.edit);
         const dlg = openDialog('تعديل الصنف', `<div class="grid form">${itemFields(it)}</div>`, async (d) => {
-          await db.update('items', { id: `eq.${it.id}` }, toRow(d, dlg));
+          await db.update('items', { id: `eq.${it.id}` }, await withImage(toRow(d, dlg), dlg));
           toast('حُفظ الصنف'); reload();
         });
         bindFits(dlg);
@@ -172,7 +182,7 @@ export async function itemView([id]) {
   const cover = monthly > 0 ? Math.floor(Number(it.qty) / (monthly / 30)) : null;
   return {
     title: it.name,
-    html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/inventory" class="subtle">المخزون</a><h1>${esc(it.name)}</h1>
+    html: `<div class="page-head"><div class="stack" style="gap:4px"><a href="#/inventory" class="subtle">المخزون</a>${it.image_url ? `<a href="${esc(it.image_url)}" target="_blank" rel="noopener"><img class="item-photo" src="${esc(it.image_url)}" alt="صورة ${esc(it.name)}"></a>` : ''}<h1>${esc(it.name)}</h1>
         <p class="muted">${[CONDITION[it.condition || 'new'] && `<span class="badge ${CONDITION[it.condition || 'new'][1]}">${CONDITION[it.condition || 'new'][0]}</span>`, it.sku && `<bdi class="ltr">${esc(it.sku)}</bdi>`, it.category && esc(it.category), it.location && `المكان: ${esc(it.location)}`].filter(Boolean).join(' · ')}</p>
         <p>${icon('car')} ${(it.fits || []).length ? `تناسب: ${esc(fitsText(it.fits))}` : '<span class="subtle">تناسب كل السيارات</span>'}</p></div>${stockBadge(it)}</div>
       <div class="kpis">

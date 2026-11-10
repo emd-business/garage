@@ -6,6 +6,9 @@ import { plateTag } from './dashboard.js';
 import { uploadMany, photoPicker } from '../media.js';
 import { modelsFor, wireModels } from '../models.js';
 import { outbox, sendIntake, syncOutbox } from '../outbox.js';
+import { scanButton, wireScan } from '../scan.js';
+
+wireScan();
 
 wireModels();
 
@@ -19,7 +22,7 @@ export function vehicleFields(v = {}) {
     ${field('الشركة المصنعة', `<input name="make" list="makes" value="${esc(v.make || '')}" required>`, { req: true })}
     ${field('الطراز', `<input name="model" list="models" autocomplete="off" value="${esc(v.model || '')}" placeholder="اختر من القائمة أو اكتبه">`)}
     ${field('سنة الصنع', `<input name="year" type="number" inputmode="numeric" min="1960" max="2030" value="${esc(v.year || '')}">`)}
-    ${field('رقم الشاصي (VIN)', `<input name="vin" dir="ltr" maxlength="17" autocapitalize="characters" value="${esc(v.vin || '')}">`)}
+    ${field('رقم الشاصي (VIN)', `<span class="row" style="gap:6px;flex-wrap:nowrap"><input name="vin" dir="ltr" maxlength="17" autocapitalize="characters" value="${esc(v.vin || '')}">${scanButton('[name=vin]', 'امسح')}</span>`)}
     ${field('اللون', `<input name="color" value="${esc(v.color || '')}">`)}
     <datalist id="makes">${MAKES.map((m) => `<option value="${esc(m)}">`).join('')}</datalist>
     <datalist id="models" data-models>${modelsFor(v.make).map((m) => `<option value="${esc(m)}">`).join('')}</datalist>`;
@@ -39,7 +42,7 @@ export default async function intake() {
   const searchHtml = `<section class="card stack">
       <h2>ابحث عن السيارة أو العميل</h2>
       <div class="row" style="flex-wrap:nowrap">
-        <input id="q" type="search" placeholder="رقم اللوحة، أو الشاصي، أو هاتف العميل، أو اسمه" aria-label="بحث" autocomplete="off">
+        <input id="q" type="search" placeholder="رقم اللوحة، أو الشاصي، أو هاتف العميل، أو اسمه" aria-label="بحث" autocomplete="off">${scanButton('#q')}
       </div>
       <div id="results" aria-live="polite"></div>
       <div><button class="btn" id="new-all">${icon('plus')} عميل وسيارة جديدان</button></div>

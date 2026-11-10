@@ -115,8 +115,8 @@ function enWords(n) {
   return parts.join(' ');
 }
 
-export function amountWords(amount) {
-  if (isEn) {
+export function amountWords(amount, en = isEn) {
+  if (en) {
     const total = Math.round((Number(amount) || 0) * 1000), rials = Math.floor(total / 1000), baisa = total % 1000;
     const p = [];
     if (rials) p.push(`${enWords(rials)} Omani rial${rials === 1 ? '' : 's'}`);

@@ -36,8 +36,9 @@ function replaceWord(text, word, value) {
   return text;
 }
 
-export function tr(text) {
-  if (!isEn || !text || !AR.test(text)) return text;
+// Arabic → English for one string, whatever the interface language (used for documents printed in English)
+export function trEn(text) {
+  if (!text || !AR.test(text)) return text;
   const t = text.trim();
   if (exact.has(t)) return text.replace(t, exact.get(t));
   let out = text;
@@ -54,11 +55,14 @@ export function tr(text) {
   return out.replace(/[٠-٩٫٬٪،؛؟]/g, (c) => DIGITS[c]).replace(/ +([,.;:?%])/g, '$1');
 }
 
+export const tr = (text) => (isEn ? trEn(text) : text);
+
 const ATTRS = ['placeholder', 'aria-label', 'title', 'alt'];
 const SKIP = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'NOSCRIPT']);
 
-export function translate(root) {
-  if (!isEn || !root) return;
+export function translate(root, force = false) {
+  if ((!isEn && !force) || !root) return;
+  const tr = trEn;
   if (root.nodeType === 3) {
     const p = root.parentElement;
     if (p && !SKIP.has(p.tagName) && !p.closest('[data-raw]')) { const n = tr(root.nodeValue); if (n !== root.nodeValue) root.nodeValue = n; }

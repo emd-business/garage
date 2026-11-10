@@ -2,6 +2,7 @@ import { db } from '../api.js';
 import { idn, esc, money, num, METHODS, carName, plate, date, dateTime, amountWords } from '../format.js';
 import { icon } from '../ui.js';
 import { ctx } from '../state.js';
+import { isEn, translate } from '../i18n.js';
 import { computeTotals } from './job.js';
 
 // Tax invoice when issued, otherwise a quotation for the customer's approval.
@@ -34,6 +35,24 @@ export default async function printDoc([id, fmt, cnId]) {
     </div>`;
   const bind = (el) => {
     el.querySelector('#do-print').addEventListener('click', () => window.print());
+    // the garage chooses the language of documents handed to customers, whatever language the screen is in
+    const docEl = el.querySelector('.doc, .receipt');
+    if (docEl && mode !== 'card') {
+      if (g.doc_lang === 'en' && !isEn) {
+        translate(docEl, true); docEl.dir = 'ltr'; docEl.lang = 'en'; docEl.classList.add('doc-en');
+        // dates were written for an Arabic screen, and the garage may have an English name
+        const MONTHS = { يناير: 'January', فبراير: 'February', مارس: 'March', أبريل: 'April', مايو: 'May', يونيو: 'June', يوليو: 'July', أغسطس: 'August', سبتمبر: 'September', أكتوبر: 'October', نوفمبر: 'November', ديسمبر: 'December' };
+        const w = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT);
+        for (let nd = w.nextNode(); nd; nd = w.nextNode()) {
+          if (nd.parentElement.closest('[data-raw]')) continue;
+          let tx = nd.nodeValue;
+          if (g.name_en && tx.includes(g.name)) tx = tx.split(g.name).join(g.name_en);
+          tx = tx.replace(/يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر/g, (m) => MONTHS[m]).replace(/(\d:\d\d)\s?م/g, '$1 pm').replace(/(\d:\d\d)\s?ص/g, '$1 am');
+          if (tx !== nd.nodeValue) nd.nodeValue = tx;
+        }
+        docEl.querySelectorAll('[style*="text-align:left"]').forEach((e) => { e.style.textAlign = 'right'; });
+      } else if (g.doc_lang !== 'en' && isEn) { docEl.setAttribute('data-raw', ''); docEl.dir = 'rtl'; docEl.lang = 'ar'; }
+    }
     // a receipt roll has no fixed length: size the page to the receipt itself
     const r = el.querySelector('.receipt');
     if (r) {
@@ -49,7 +68,7 @@ export default async function printDoc([id, fmt, cnId]) {
       <header class="doc-head"><div><div class="g-name">كرت الورشة</div><div class="g-meta">${esc(g.name)}${branchLine ? ` · ${esc(branchLine)}` : ''}</div></div>
         <div style="text-align:center"><div class="big-no">${idn(j.job_no)}</div><div class="g-meta">أمر العمل</div></div></header>
       <div class="doc-grid">
-        <div><strong>المركبة:</strong> ${esc(carName(v))}</div>
+        <div><strong>المركبة:</strong> <span data-raw>${esc(carName(v))}</span></div>
         <div><strong>اللوحة:</strong> ${esc(plate(v))}</div>
         ${v.vin ? `<div><strong>الشاصي:</strong> <bdi class="ltr">${esc(v.vin)}</bdi></div>` : ''}
         ${j.odometer ? `<div><strong>العداد:</strong> ${num(j.odometer)} كم</div>` : ''}
@@ -93,7 +112,7 @@ export default async function printDoc([id, fmt, cnId]) {
         <div><strong>وقت الاستلام:</strong> ${esc(dateTime(j.received_at))}</div>
         <div><strong>العميل:</strong> ${esc(c.name || '')}</div>
         <div><strong>الهاتف:</strong> <bdi class="ltr">${esc(c.phone || '')}</bdi></div>
-        <div><strong>المركبة:</strong> ${esc(carName(v))}${v.color ? ` · ${esc(v.color)}` : ''}</div>
+        <div><strong>المركبة:</strong> <span data-raw>${esc(carName(v))}</span>${v.color ? ` · ${esc(v.color)}` : ''}</div>
         <div><strong>اللوحة:</strong> ${esc(plate(v))}</div>
         ${v.vin ? `<div><strong>الشاصي:</strong> <bdi class="ltr">${esc(v.vin)}</bdi></div>` : ''}
         ${j.odometer ? `<div><strong>العداد:</strong> ${num(j.odometer)} كم</div>` : ''}
@@ -103,7 +122,7 @@ export default async function printDoc([id, fmt, cnId]) {
       ${j.complaint ? `<div><strong>طلب العميل:</strong> ${esc(j.complaint)}</div>` : ''}
       ${Object.keys(ck).length ? `<div class="check-grid">${Object.entries(ck).map(([k, val]) => `<span class="${val ? 'yes' : 'no'}">${val ? '✓' : '✗'} ${esc(k)}</span>`).join('')}</div>` : ''}
       ${(j.photos || []).length ? `<div class="doc-photos">${j.photos.slice(0, 4).map((u) => `<img src="${esc(u)}" alt="">`).join('')}</div>` : ''}
-      <div class="terms">أقرّ بتسليم السيارة الموصوفة أعلاه إلى ${esc(g.name)} بالحالة المبيّنة في هذا الإيصال، ولا تُنفَّذ أي أعمال إضافية إلا بموافقتي.${g.invoice_terms ? `<br>${esc(g.invoice_terms).replace(/\n/g, '<br>')}` : ''}</div>
+      <div class="terms">أقرّ بتسليم السيارة الموصوفة أعلاه إلى ${esc(g.name)} بالحالة المبيّنة في هذا الإيصال، ولا تُنفَّذ أي أعمال إضافية إلا بموافقتي.${g.invoice_terms ? `<br><span data-raw>${esc(g.invoice_terms).replace(/\n/g, '<br>')}</span>` : ''}</div>
       <div class="sign"><div>${j.intake_signature_url ? `<img class="stamp" src="${esc(j.intake_signature_url)}" alt="توقيع العميل">` : ''}توقيع العميل${j.intake_signed_at ? `<br><span style="font-size:9pt;color:#5B6576">${esc(dateTime(j.intake_signed_at))}</span>` : ''}</div><div>${g.stamp_url ? `<img class="stamp" src="${esc(g.stamp_url)}" alt="">` : ''}الختم والمستلم</div></div>
       <footer class="doc-foot"><span>احتفظ بهذا الإيصال لاستلام سيارتك</span><span class="row" style="gap:6px">بواسطة <img src="assets/logo.svg" alt="EMD Garage"></span></footer>
     </article>` };
@@ -128,7 +147,7 @@ export default async function printDoc([id, fmt, cnId]) {
         <div><strong>تاريخ الفاتورة:</strong> ${esc(date(inv.issued_at))}</div>
         <div><strong>العميل:</strong> ${esc(c.name || '')}</div>
         ${c.vat_number ? `<div><strong>الرقم الضريبي للعميل:</strong> <bdi class="ltr">${esc(c.vat_number)}</bdi></div>` : `<div><strong>الهاتف:</strong> <bdi class="ltr">${esc(c.phone || '')}</bdi></div>`}
-        <div><strong>المركبة:</strong> ${esc(carName(v))} ${esc(plate(v))}</div>
+        <div><strong>المركبة:</strong> <span data-raw>${esc(carName(v))}</span> ${esc(plate(v))}</div>
       </div>
       <div><strong>السبب:</strong> ${esc(cn.reason)}</div>
       <div class="totals">
@@ -137,7 +156,7 @@ export default async function printDoc([id, fmt, cnId]) {
         <span class="grand">إجمالي الإشعار</span><span class="num grand">${money(cn.total)}</span>
         ${Number(cn.refund_amount) ? `<span>رُدّ للعميل (${esc(METHODS[cn.refund_method] || '')})</span><span class="num">${money(cn.refund_amount)}</span>` : ''}
       </div>
-      <div class="words"><strong>المبلغ كتابةً:</strong> ${esc(amountWords(cn.total))}</div>
+      <div class="words"><strong>المبلغ كتابةً:</strong> <span data-raw>${esc(amountWords(cn.total, g.doc_lang === 'en'))}</span></div>
       <div class="sign"><div>توقيع العميل</div><div>الختم والتوقيع</div></div>
       <footer class="doc-foot"><span>${esc(g.name)}</span><span class="row" style="gap:6px">بواسطة <img src="assets/logo.svg" alt="EMD Garage"></span></footer>
     </article>` };
@@ -171,19 +190,19 @@ export default async function printDoc([id, fmt, cnId]) {
         ${isInvoice ? `<span>المدفوع</span><span>${money(inv.paid)}</span><strong>المتبقي</strong><strong>${money(inv.balance)}</strong>` : ''}
       </div>
       ${payments.length ? `<div class="r-small">${payments.map((p) => `سند ${idn(p.receipt_no)} · ${esc(METHODS[p.method])} · ${money(p.amount)}`).join('<br>')}</div>` : ''}
-      ${g.invoice_terms ? `<div class="r-small">${esc(g.invoice_terms).replace(/\n/g, '<br>')}</div>` : ''}
+      ${g.invoice_terms ? `<div class="r-small" data-raw>${esc(g.invoice_terms).replace(/\n/g, '<br>')}</div>` : ''}
       <footer>شكراً لثقتكم<br><img src="assets/logo.svg" alt="EMD Garage"></footer>
     </article>` };
   }
 
-  const terms = g.invoice_terms ? `<div class="terms"><strong>الشروط والأحكام</strong><br>${esc(g.invoice_terms).replace(/\n/g, '<br>')}</div>` : '';
+  const terms = g.invoice_terms ? `<div class="terms"><strong>الشروط والأحكام</strong><br><span data-raw>${esc(g.invoice_terms).replace(/\n/g, '<br>')}</span></div>` : '';
   const html = `${bar}
     <article class="doc">
       <header class="doc-head">
         <div>
           ${g.logo_url ? `<img src="${esc(g.logo_url)}" alt="" style="height:56px;margin-bottom:6px">` : ''}
           <div class="g-name">${esc(g.name)}</div>
-          ${g.name_en ? `<div class="g-meta" dir="ltr" style="text-align:right">${esc(g.name_en)}</div>` : ''}
+          ${g.name_en ? `<div class="g-meta g-en" dir="ltr" style="text-align:right">${esc(g.name_en)}</div>` : ''}
         </div>
         <div class="g-meta" style="text-align:left">
           ${br && ctx.multiBranch ? `<div><strong>${esc(br.name)}</strong></div>` : ''}
@@ -202,7 +221,7 @@ export default async function printDoc([id, fmt, cnId]) {
         <div><strong>العميل:</strong> ${esc(c.name || '')}</div>
         <div><strong>الهاتف:</strong> <bdi class="ltr">${esc(c.phone || '')}</bdi></div>
         ${c.vat_number ? `<div><strong>الرقم الضريبي للعميل:</strong> <bdi class="ltr">${esc(c.vat_number)}</bdi></div>` : ''}
-        <div><strong>المركبة:</strong> ${esc(carName(v))}</div>
+        <div><strong>المركبة:</strong> <span data-raw>${esc(carName(v))}</span></div>
         <div><strong>اللوحة:</strong> ${esc(plate(v))}</div>
         ${v.vin ? `<div><strong>الشاصي:</strong> <bdi class="ltr">${esc(v.vin)}</bdi></div>` : ''}
         ${j.odometer ? `<div><strong>العداد:</strong> ${num(j.odometer)} كم</div>` : ''}
@@ -228,7 +247,7 @@ export default async function printDoc([id, fmt, cnId]) {
         ${isInvoice && inv.insurer_id && Number(inv.insurer_amount) ? `<span>حصة شركة التأمين${inv.claim_no ? ` (مطالبة <bdi class="ltr">${esc(inv.claim_no)}</bdi>)` : ''}</span><span class="num">${money(inv.insurer_amount)}</span><span>حصة العميل (التحمّل)</span><span class="num">${money(Number(inv.total) - Number(inv.insurer_amount))}</span>` : ''}
         ${isInvoice ? `<span>المدفوع</span><span class="num">${money(inv.paid)}</span><span><strong>المتبقي</strong></span><span class="num"><strong>${money(inv.balance)}</strong></span>` : ''}
       </div>
-      <div class="words"><strong>المبلغ كتابةً:</strong> ${esc(amountWords(t.total))}</div>
+      <div class="words"><strong>المبلغ كتابةً:</strong> <span data-raw>${esc(amountWords(t.total, g.doc_lang === 'en'))}</span></div>
 
       ${payments.length ? `<div style="font-size:10.5pt"><strong>الدفعات:</strong> ${payments.map((p) => `سند ${idn(p.receipt_no)} · ${p.deposit_id ? 'عربون' : esc(METHODS[p.method])}${p.payer === 'insurer' ? ' · التأمين' : ''} · ${money(p.amount)} · ${esc(date(p.paid_at))}`).join(' — ')}</div>` : ''}
       ${!isInvoice ? `<div style="font-size:10.5pt">هذا العرض تقديري، وقد تتغير التكلفة إن ظهرت أعمال إضافية بعد الفحص، ولن تُنفَّذ إلا بموافقتك.${Number(g.quote_valid_days) > 0 ? ` العرض صالح حتى ${esc(date(new Date(Date.now() + Number(g.quote_valid_days) * 864e5)))}.` : ''}</div>` : ''}

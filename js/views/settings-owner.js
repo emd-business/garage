@@ -19,6 +19,7 @@ export function ownerCards(g) {
         <h2>الفواتير والمستندات</h2>
         ${field('الشروط والأحكام أسفل الفاتورة وعرض السعر', `<textarea name="invoice_terms" rows="4" placeholder="مثال:\nالقطع المستبدلة لا تُرد بعد ٧ أيام.\nالكراج غير مسؤول عن المتعلقات الشخصية داخل السيارة.\nالسيارات غير المستلمة بعد ٣٠ يوماً من الإشعار تُفرض عليها رسوم مواقف.">${esc(g.invoice_terms || '')}</textarea>`, { hint: 'سطر لكل شرط. تُطبع على الفاتورة وعرض السعر والإيصال الحراري.' })}
         <div class="grid form">
+          ${field('لغة المستندات المطبوعة', `<select name="doc_lang"><option value="ar" ${g.doc_lang !== 'en' ? 'selected' : ''}>العربية</option><option value="en" ${g.doc_lang === 'en' ? 'selected' : ''} data-raw>English</option></select>`, { hint: 'الفاتورة وعرض السعر والإيصالات تُطبع بهذه اللغة مهما كانت لغة الشاشة.' })}
           ${field('صلاحية عرض السعر (يوم)', `<input name="quote_valid_days" type="number" min="0" max="365" step="1" inputmode="numeric" value="${esc(g.quote_valid_days ?? 15)}">`, { hint: 'تُكتب على العرض «صالح حتى…». اكتب ٠ لإخفائها.' })}
         </div>
         <div class="row" style="gap:16px;align-items:center">
@@ -97,7 +98,7 @@ export function bindOwner(el, g) {
   });
   const numOrNull = (v) => (v == null || v === '' ? null : Number(v));
 
-  save(el.querySelector('#docs'), (d) => ({ invoice_terms: d.invoice_terms, quote_valid_days: Number(d.quote_valid_days || 0) }), 'حُفظت إعدادات المستندات');
+  save(el.querySelector('#docs'), (d) => ({ invoice_terms: d.invoice_terms, quote_valid_days: Number(d.quote_valid_days || 0), doc_lang: d.doc_lang === 'en' ? 'en' : 'ar' }), 'حُفظت إعدادات المستندات');
   save(el.querySelector('#controls'), (d) => ({
     max_discount_pct: numOrNull(d.max_discount_pct), approval_threshold: numOrNull(d.approval_threshold),
     reception_refunds: !!d.reception_refunds, allow_negative_stock: !!d.allow_negative_stock, cash_close_alert: !!d.cash_close_alert,
