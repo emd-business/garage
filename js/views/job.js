@@ -232,7 +232,7 @@ export default async function job([id]) {
     if (j.status === 'repair') return { t: 'انتهى الإصلاح؟ انقلها لفحص الجودة', h: 'تجربة السيارة قبل تسليمها.', status: 'qc' };
     if (j.status === 'qc') return { t: 'السيارة جاهزة', h: 'بعدها أرسل للعميل رسالة «السيارة جاهزة».', status: 'ready' };
     if (!inv || stale) return office ? { t: stale ? 'حدّث الفاتورة' : 'أصدر الفاتورة', h: `الإجمالي ${money(est.total)} شامل الضريبة.`, sel: '#issue button' } : null;
-    if (Number(inv.balance) > 0.0005) return office ? { t: 'استلم المبلغ', h: `المتبقي ${money(inv.balance)}.`, sel: '#pay [name="amount"]' } : null;
+    if (Number(inv.balance) > 0.0005) return office && ctx.allowed('payments') ? { t: 'استلم المبلغ', h: `المتبقي ${money(inv.balance)}.`, sel: '#pay [name="amount"]' } : null;
     return { t: 'سلّم السيارة', h: 'الفاتورة مدفوعة بالكامل.', status: 'delivered' };
   })();
   const nextHtml = nextStep ? `<div class="next-step ${nextStep.info ? 'info' : ''}" id="next-step">

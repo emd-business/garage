@@ -6,6 +6,9 @@ export const ctx = {
   garage: null,
   role: null,
   isAdmin: false,
+  caps: {}, denied: [],
+  // single abilities the owner has taken away from this employee
+  allowed(cap) { return this.role === 'owner' || !this.denied.includes(cap); },
   staff: [],
   branches: [],       // active branches of this garage
   branch: null,       // the branch the user is working in now
@@ -41,12 +44,15 @@ export async function loadContext() {
   ]);
   ctx.garage = garage; ctx.role = role;
   if (role) {
-    const [staff, branches, cur] = await Promise.all([
+    const [staff, branches, cur, caps] = await Promise.all([
       db.rpc('garage_staff'),
       db.get('branches', { order: 'is_main.desc,created_at' }).catch(() => []),
       db.rpc('current_branch').catch(() => null),
+      db.rpc('member_caps').catch(() => ({})),
     ]);
     ctx.staff = staff;
+    ctx.caps = caps || {};
+    ctx.denied = ctx.caps[ctx.uid] || [];
     ctx.allBranches = branches;
     ctx.branches = branches.filter((b) => b.active);
     ctx.branch = branches.find((b) => b.id === cur) || ctx.branches[0] || null;

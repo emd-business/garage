@@ -1,12 +1,26 @@
 import { db } from '../api.js';
 import { esc, money, num, ROLES, dateTime, waLink } from '../format.js';
 import { icon, toast, field, options, formData, busy, openDialog } from '../ui.js';
-import { ctx, refreshGarage } from '../state.js';
+import { ctx, refreshGarage, loadContext } from '../state.js';
 import { uploadImage } from '../media.js';
 import { readiness } from '../einvoice.js';
 import { ownerCards, bindOwner } from './settings-owner.js';
 
 let itemsForReady = [];
+// Abilities the owner can take away from one employee: [key, label, roles that have it, what it covers]
+const CAPS = [
+  ['payments', 'استلام المبالغ', ['manager', 'reception', 'accountant'], 'سندات القبض والعرابين'],
+  ['discount', 'منح الخصم', ['manager', 'reception', 'accountant'], 'أي خصم على الفاتورة'],
+  ['refund', 'ردّ المبالغ والإشعارات الدائنة', ['manager', 'reception', 'accountant'], 'ردّ العربون وإصدار إشعار دائن'],
+  ['cash_close', 'إقفال الصندوق', ['manager', 'reception', 'accountant'], 'عدّ النقد وإقفال اليوم'],
+  ['job_cancel', 'إلغاء أوامر العمل', ['manager', 'reception'], 'تحويل أمر العمل إلى «ملغى»'],
+  ['delete_invoice', 'حذف الفواتير', ['manager'], 'حذف فاتورة غير مدفوعة'],
+  ['expenses', 'المصروفات', ['manager', 'accountant'], 'إضافة المصروفات وتعديلها وحذفها'],
+  ['purchases', 'المشتريات والسداد للموردين', ['manager', 'accountant', 'storekeeper'], 'فواتير الشراء والمرتجعات والدفع للمورد'],
+  ['stock_adjust', 'تعديل كميات المخزون', ['manager', 'storekeeper'], 'تصحيح الكمية والجرد والتحويل بين الفروع'],
+  ['prices', 'تعديل الأسعار', ['manager', 'storekeeper'], 'أسعار الخدمات وأسعار بيع القطع'],
+];
+
 export default async function settings() {
   const g = ctx.garage;
   const [services, invites, lim] = await Promise.all([
@@ -95,11 +109,12 @@ export default async function settings() {
       <section class="card pad-0" id="team">
         <div class="card-head" style="padding:16px 20px 0"><h2>الفريق ${lim ? usage(lim.users, lim.max_users, 'مستخدمين') : ''}</h2><button class="btn small teal" id="invite" ${fullUsers ? 'disabled title="وصلت إلى حد المستخدمين في باقتك"' : ''}>${icon('plus')} ادعُ موظفاً</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th>${ctx.multiBranch ? '<th>الفرع</th>' : ''}<th>الحالة</th></tr></thead>
+          <thead><tr><th>الموظف</th><th>الدور</th><th>عمولة العمالة ٪</th>${ctx.multiBranch ? '<th>الفرع</th>' : ''}${ctx.can('owner') ? '<th>الصلاحيات</th>' : ''}<th>الحالة</th></tr></thead>
           <tbody>${ctx.staff.map((s) => `<tr><td>${esc(s.full_name)}${s.user_id === ctx.uid ? ' <span class="subtle">(أنت)</span>' : ''}</td>
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? esc(ROLES[s.role]) : `<select data-role="${s.user_id}" aria-label="دور ${esc(s.full_name)}" style="max-width:180px">${options(roleOpts, s.role)}</select>`}</td>
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? '—' : `<input type="number" min="0" max="100" step="0.5" value="${esc(s.commission_pct ?? 0)}" data-comm="${s.user_id}" aria-label="عمولة ${esc(s.full_name)}" style="max-width:90px">`}</td>
             ${ctx.multiBranch ? `<td>${s.role === 'owner' || s.user_id === ctx.uid ? 'كل الفروع' : `<select data-mbr="${s.user_id}" aria-label="فرع ${esc(s.full_name)}" style="max-width:180px"><option value="">كل الفروع</option>${ctx.branches.map((b) => `<option value="${b.id}" ${b.id === s.branch_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`}</td>` : ''}
+            ${ctx.can('owner') ? `<td>${s.role === 'owner' ? 'كل شيء' : CAPS.some(([, , roles]) => roles.includes(s.role)) ? `<button class="btn small ${(ctx.caps[s.user_id] || []).length ? '' : 'ghost'}" data-caps="${s.user_id}">${(ctx.caps[s.user_id] || []).length ? `مقيَّدة (${num((ctx.caps[s.user_id] || []).filter((c) => (CAPS.find(([k]) => k === c) || [0, 0, []])[2].includes(s.role)).length)})` : 'حسب الدور'}</button>` : '<span class="subtle">حسب الدور</span>'}</td>` : ''}
             <td>${s.role === 'owner' || s.user_id === ctx.uid ? '<span class="badge success">نشط</span>' : `<button class="btn small ${s.active ? 'ghost' : 'teal'}" data-active="${s.user_id}" data-to="${!s.active}">${s.active ? 'أوقف' : 'فعّل'}</button>`}</td></tr>`).join('')}</tbody>
         </table></div>
         ${fullUsers ? '<p class="notice warn" style="margin:12px 20px">وصلت إلى حد المستخدمين في باقتك. لإضافة موظف أوقف موظفاً آخر أو تواصل مع EMD لترقية الباقة.</p>' : ''}
@@ -173,6 +188,17 @@ export default async function settings() {
       });
       el.querySelector('#add-br').addEventListener('click', () => brDialog());
       el.querySelectorAll('[data-br]').forEach((x) => x.addEventListener('click', () => brDialog(ctx.allBranches.find((b) => b.id === x.dataset.br))));
+      el.querySelectorAll('[data-caps]').forEach((b) => b.addEventListener('click', () => {
+        const s = ctx.staff.find((x) => x.user_id === b.dataset.caps), denied = ctx.caps[s.user_id] || [];
+        const mine = CAPS.filter(([, , roles]) => roles.includes(s.role));
+        openDialog(`صلاحيات ${s.full_name}`, `<p class="muted">دوره «${esc(ROLES[s.role])}» يسمح له بما يلي. أزل العلامة عمّا لا تريده أن يفعله.</p>
+          <div class="stack" style="gap:0">${mine.map(([k, label, , hint]) => `<label class="toggle-row"><input type="checkbox" name="cap_${k}" value="1" ${denied.includes(k) ? '' : 'checked'}><span><strong>${label}</strong><span class="subtle">${hint}</span></span></label>`).join('')}</div>`, async (d) => {
+          // keep restrictions that belong to other roles, in case his role changes back
+          const keep = denied.filter((c) => !mine.some(([k]) => k === c));
+          await db.rpc('set_member_caps', { p_user: s.user_id, p_denied: [...keep, ...mine.filter(([k]) => !d[`cap_${k}`]).map(([k]) => k)] });
+          toast('حُفظت الصلاحيات'); await loadContext(); reload();
+        });
+      }));
       el.querySelectorAll('[data-mbr]').forEach((s) => s.addEventListener('change', () => busy(s, async () => {
         await db.update('memberships', { garage_id: `eq.${g.id}`, user_id: `eq.${s.dataset.mbr}` }, { branch_id: s.value || null });
         toast(s.value ? 'صار الموظف يعمل في هذا الفرع فقط' : 'صار الموظف يعمل في كل الفروع'); ctx.staff = await db.rpc('garage_staff');

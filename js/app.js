@@ -130,6 +130,18 @@ async function renderPortal(params) {
   window.scrollTo(0, 0);
 }
 
+const CAP_UI = {
+  job: { payments: '#pay, #deposit', refund: '#credit, [data-refund-dep]', delete_invoice: '#del-inv', job_cancel: '#cancel-job', discount: '#issue .field:has([name="discount"])' },
+  expenses: { expenses: '#add, [data-edit], [data-del]' },
+  cash: { cash_close: '#close' },
+  purchases: { purchases: '#new-pur, #new-ret, [data-pay]' },
+  inventory: { stock_adjust: '[data-adjust], [data-move], a[href="#/stocktake"]' },
+  settings: { prices: '#add-svc, [data-svc]' },
+};
+function hideDenied(el, key) {
+  if (!ctx.denied.length) return;
+  for (const [cap, sel] of Object.entries(CAP_UI[key] || {})) if (!ctx.allowed(cap)) el.querySelectorAll(sel).forEach((n) => n.remove());
+}
 const PUBLIC = ['privacy', 'terms'];
 async function renderLegal(which) {
   delete root.dataset.active;
@@ -182,6 +194,7 @@ async function route() {
     const head = el.querySelector('.page-head');
     if (head && !head.querySelector('[data-help]')) head.insertAdjacentHTML('beforeend', helpButton(key));
     out.bind && out.bind(el);
+    hideDenied(el, key);
     document.title = `${out.title ? `${out.title} · ` : ''}EMD Garage`;
     runPendingQuick(el);
   } catch (e) {

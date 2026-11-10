@@ -151,7 +151,7 @@ async function rest(method, path, { body, prefer, headers = {} } = {}) {
 const READ_RPC = new Set(['dashboard_today', 'garage_staff', 'my_role', 'is_platform_admin', 'report_summary', 'trial_balance', 'account_ledger',
   'customer_statement', 'supplier_statement', 'service_due', 'monthly_costs', 'job_time', 'job_lines_for_tech', 'warranty_check', 'tech_time',
   'admin_garages', 'my_subscription', 'portal_job', 'current_branch', 'my_limits', 'setup_progress', 'cash_status', 'sublet_suppliers',
-  'reorder_suggestions', 'platform_contact', 'global_search']);
+  'reorder_suggestions', 'platform_contact', 'global_search', 'member_caps']);
 const CACHE = 'emd-garage-data';
 function cacheKey(method, path, body) {
   const who = (session && session.user && session.user.id) || 'anon';
