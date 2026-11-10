@@ -25,7 +25,7 @@ export default async function settings() {
   return {
     title: 'الإعدادات',
     html: `<div class="page-head"><div><h1>إعدادات الكراج</h1><p class="lead">بيانات الكراج، وقواعد العمل التي تقررها أنت.</p></div></div>
-      <nav class="jump" aria-label="أقسام الإعدادات">${[['garage', 'البيانات'], ['printing', 'الطباعة'], ['docs', 'المستندات'], ['controls', 'الصلاحيات'], ['service', 'الاستلام'], ['wa', 'الرسائل'], ['fawtara', 'فوترة'], ['svcs', 'الخدمات'], ['branches', 'الفروع'], ['team', 'الفريق']].map(([id, t]) => `<a href="#" data-jump="${id}">${t}</a>`).join('')}</nav>
+      <nav class="jump" aria-label="أقسام الإعدادات">${[['garage', 'البيانات'], ['printing', 'الطباعة'], ['docs', 'المستندات'], ['controls', 'الصلاحيات'], ['service', 'الاستلام'], ['wa', 'الرسائل'], ...(ctx.can('owner') ? [['backup', 'النسخ']] : []), ['fawtara', 'فوترة'], ['svcs', 'الخدمات'], ['branches', 'الفروع'], ['team', 'الفريق']].map(([id, t]) => `<a href="#" data-jump="${id}">${t}</a>`).join('')}</nav>
 
       <form class="card stack" id="garage" novalidate>
         <h2>بيانات الكراج</h2>

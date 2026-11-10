@@ -2,7 +2,7 @@ import { LOCALE, langButton } from './i18n.js';
 // EMD Garage — app entry: auth, onboarding, shell and hash router.
 import { auth, db } from './api.js';
 import { esc, ROLES } from './format.js';
-import { icon, toast, errMsg, formData, busy, field, passwordInput } from './ui.js';
+import { icon, toast, errMsg, formData, busy, field, passwordInput, openDialog } from './ui.js';
 import { ctx, loadContext, switchBranch } from './state.js';
 import { fabHtml, runPendingQuick, helpButton, wireQuick } from './quick.js';
 
@@ -23,6 +23,8 @@ import pricing from './views/pricing.js';
 import accounting, { ledger, statement } from './views/accounting.js';
 import portal from './views/portal.js';
 import admin from './views/admin.js';
+import legal from './views/legal.js';
+import { outbox, syncOutbox } from './outbox.js';
 import settings from './views/settings.js';
 
 const root = document.getElementById('app');
@@ -83,7 +85,8 @@ function shell(activeKey) {
   const items = [...primary, ...rest];
   const link = (n, cls = '') => `<a href="${n.href}" class="${cls}" ${n.key === activeKey ? 'aria-current="page"' : ''}>${icon(n.icon)}<span>${esc(n.label)}</span></a>`;
   const left = ctx.garage.trial_ends_at ? Math.ceil((new Date(ctx.garage.trial_ends_at) - Date.now()) / 864e5) : null;
-  const trial = ctx.garage.status === 'trial' ? `<div class="notice ${left !== null && left <= 7 ? 'warn' : 'info'}">${left === null ? 'نسخة تجريبية' : left > 0 ? `التجربة تنتهي بعد ${new Intl.NumberFormat(LOCALE).format(left)} يوماً` : 'انتهت الفترة التجريبية'}</div>` : '';
+  const demo = ctx.garage.is_demo ? '<div class="notice info demo-note"><strong>كراج تجريبي</strong><span>البيانات هنا نموذجية.</span><button type="button" class="btn small" data-leave-demo>أنهِ التجربة</button></div>' : '';
+  const trial = ctx.garage.is_demo ? demo : ctx.garage.status === 'trial' ? `<div class="notice ${left !== null && left <= 7 ? 'warn' : 'info'}">${left === null ? 'نسخة تجريبية' : left > 0 ? `التجربة تنتهي بعد ${new Intl.NumberFormat(LOCALE).format(left)} يوماً` : 'انتهت الفترة التجريبية'}</div>` : '';
   const branchSel = (cls) => !ctx.multiBranch ? '' : ctx.branchLocked
     ? `<span class="branch-tag ${cls}">${esc(ctx.branch?.name || '')}</span>`
     : `<label class="branch-pick ${cls}"><span class="sr-only">الفرع</span><select data-branch aria-label="الفرع">${ctx.branches.map((b) => `<option value="${b.id}" ${b.id === ctx.branch?.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></label>`;
@@ -107,6 +110,7 @@ function shell(activeKey) {
         <span class="garage-name">${esc(ctx.garage.name)}${branchSel('on-top')}</span>
         <span class="row" style="gap:4px;flex-wrap:nowrap"><button type="button" class="btn ghost icon-btn" data-search aria-label="بحث" style="color:#fff">${icon('search')}</button>${langButton('btn small ghost lang-btn')}<button type="button" class="btn ghost icon-btn" data-signout aria-label="تسجيل الخروج" style="color:#fff">${icon('out')}</button></span>
       </header>
+      ${ctx.garage.is_demo ? '<div class="demo-strip"><span>كراج تجريبي ببيانات نموذجية</span><button type="button" class="btn small" data-leave-demo>أنهِ التجربة</button></div>' : ''}
       <main class="content" id="view" tabindex="-1"><div class="skeleton"></div></main>
       <nav class="bottomnav" aria-label="القائمة">${(items.length > 5 ? items.slice(0, 4) : items).map((n) => link(n)).join('')}${items.length > 5 ? `<a href="#/more" ${activeKey === 'more' || !items.slice(0, 4).some((n) => n.key === activeKey) ? 'aria-current="page"' : ''}>${icon('more')}<span>المزيد</span></a>` : ''}</nav>
       ${fabHtml()}
@@ -126,9 +130,20 @@ async function renderPortal(params) {
   window.scrollTo(0, 0);
 }
 
+const PUBLIC = ['privacy', 'terms'];
+async function renderLegal(which) {
+  delete root.dataset.active;
+  const out = await legal(which);
+  root.innerHTML = out.html;
+  document.title = `${out.title} · EMD Garage`;
+  window.scrollTo(0, 0);
+}
+const legalLinks = (style = '') => `<p class="legal-links" style="${style}"><a href="#/privacy">سياسة الخصوصية</a> · <a href="#/terms">شروط الاستخدام</a></p>`;
+
 async function route() {
   const r0 = parseRoute();
   if (r0.key === 't') return renderPortal(r0.params);
+  if (PUBLIC.includes(r0.key)) return renderLegal(r0.key);
   if (!auth.session) return renderAuth();
   if (ctx.garage && !ctx.role && ctx.garage.status === 'suspended') return renderSuspended();
   // the platform account has no garage of its own: it sees the EMD admin page only
@@ -230,6 +245,7 @@ function renderAuth(mode = 'in', note = '') {
         ${mode === 'in' || mode === 'up' ? `<div class="tabs" role="tablist">${tabs.map(([m, l]) => `<button type="button" role="tab" data-mode="${m}" aria-selected="${m === mode}">${l}</button>`).join('')}</div>` : `<h2>${mode === 'reset' ? 'كلمة مرور جديدة' : 'استعادة كلمة المرور'}</h2>`}
         ${note ? `<div class="notice ${note.kind}" role="status">${esc(note.text)}</div>` : ''}
         ${body[mode]}
+        ${mode === 'up' ? '<p class="subtle">بإنشاء الحساب توافق على: <a href="#/terms">شروط الاستخدام</a> · <a href="#/privacy">سياسة الخصوصية</a></p>' : legalLinks()}
       </form>
     </section>
   </div>`;
@@ -306,6 +322,11 @@ function renderOnboarding() {
         ${field('هاتف الكراج (اختياري)', '<input name="phone" type="tel" dir="ltr">')}
         <button class="btn primary">أنشئ الكراج</button>
       </form>
+      <section class="card stack" id="demo-card">
+        <h2>أو جرّب أولاً</h2>
+        <p class="muted">كراج تجريبي جاهز فيه عملاء وسيارات وأوامر عمل وفواتير ومخزون، لتجرّب كل شيء قبل إدخال بياناتك. يُحذف عند إنهاء التجربة.</p>
+        <button type="button" class="btn teal" id="demo">افتح الكراج التجريبي</button>
+      </section>
       <form class="card" id="join" novalidate>
         <h2>انضم بدعوة</h2>
         ${field('رمز الدعوة', '<input name="code" required dir="ltr" autocapitalize="characters" style="letter-spacing:.2em">', { req: true })}
@@ -323,6 +344,11 @@ function renderOnboarding() {
       toast('أُنشئ الكراج. أكمل بياناته وأسعارك');
     });
   });
+  root.querySelector('#demo').addEventListener('click', (ev) => busy(ev.currentTarget, async () => {
+    await db.rpc('create_demo_garage');
+    await start('#/');
+    toast('هذا كراج تجريبي. جرّب بحرية، فلا شيء هنا حقيقي');
+  }));
   root.querySelector('#join').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const f = ev.target; if (!f.reportValidity()) return;
@@ -342,7 +368,9 @@ async function start(hash) {
     root.innerHTML = `<div class="content"><div class="notice error" role="alert">تعذّر الاتصال: ${esc(errMsg(e))}</div><button class="btn" onclick="location.reload()">أعد المحاولة</button></div>`;
     return;
   }
-  if (hash && location.hash !== hash) { location.hash = hash; return; }
+  delete root.dataset.active;   // the garage may have changed: draw the shell again
+  flushOutbox();
+  if (hash && location.hash !== hash && !(hash === '#/' && !location.hash)) { location.hash = hash; return; }
   route();
 }
 
@@ -358,6 +386,14 @@ document.addEventListener('change', async (ev) => {
 });
 
 document.addEventListener('click', async (ev) => {
+  const leave = ev.target.closest('[data-leave-demo]');
+  if (leave) {
+    openDialog('إنهاء التجربة', '<p>سيُحذف الكراج التجريبي وكل ما أدخلته فيه، ثم تنتقل إلى كراجك الحقيقي أو إلى إنشائه.</p>', async () => {
+      await db.rpc('leave_demo');
+      await start('#/');
+    }, { submitLabel: 'أنهِ التجربة واحذفه', danger: true });
+    return;
+  }
   if (ev.target.closest('[data-signout]')) {
     await auth.signOut();
     ctx.garage = null; ctx.role = null;
@@ -366,6 +402,15 @@ document.addEventListener('click', async (ev) => {
   }
 });
 wireQuick();
+// intakes saved without internet are sent as soon as it is back
+async function flushOutbox() {
+  if (!auth.session || !ctx.garage || !outbox.list().length) return;
+  const r = await syncOutbox().catch(() => null);
+  if (!r) return;
+  if (r.sent.length) { toast(`أُرسلت الاستلامات المحفوظة على الجهاز (${r.sent.length})`); window.dispatchEvent(new HashChangeEvent('hashchange')); }
+  else if (r.failed) toast('تعذّر إرسال استلام محفوظ على الجهاز. افتح صفحة «استلام» لمعرفة السبب', 'error');
+}
+window.addEventListener('online', () => setTimeout(flushOutbox, 1500));
 window.addEventListener('hashchange', route);
 
 (async () => {
@@ -373,7 +418,7 @@ window.addEventListener('hashchange', route);
     const r = await auth.fromUrl();
     if (r && r.type === 'recovery') return renderAuth('reset');
   } catch (e) { toast(errMsg(e), 'error'); }
-  if (parseRoute().key === 't') return route();
+  if (parseRoute().key === 't' || PUBLIC.includes(parseRoute().key)) return route();
   if (!auth.session) return renderAuth();
   start();
 })();

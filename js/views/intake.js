@@ -1,10 +1,11 @@
 import { db, like } from '../api.js';
-import { idn, esc, num, carName, fromLocalInput, MAKES } from '../format.js';
+import { idn, esc, num, carName, fromLocalInput, dateTime, MAKES } from '../format.js';
 import { icon, toast, field, options, formData, busy } from '../ui.js';
 import { ctx } from '../state.js';
 import { plateTag } from './dashboard.js';
 import { uploadMany, photoPicker } from '../media.js';
 import { modelsFor, wireModels } from '../models.js';
+import { outbox, sendIntake, syncOutbox } from '../outbox.js';
 
 wireModels();
 
@@ -83,10 +84,28 @@ export default async function intake() {
     </form>`;
   };
 
+  const pendingHtml = () => {
+    const list = outbox.list();
+    return list.length ? `<section class="card stack" id="pending" style="border-color:var(--warning-ink)">
+      <div class="card-head" style="margin:0"><h2>استلامات محفوظة على هذا الجهاز</h2><button type="button" class="btn small primary" id="sync-now">أرسل الآن</button></div>
+      <p class="subtle">سُجّلت دون إنترنت ولم تصل إلى النظام بعد. تُرسل تلقائياً عند عودة الاتصال.</p>
+      <div class="list">${list.map((e) => `<div class="list-item"><span><strong>${esc(e.label)}</strong><br><span class="subtle">${esc(dateTime(e.at))}</span>${e.error ? `<br><span class="badge danger">${esc(e.error)}</span>` : ''}</span>
+        <button type="button" class="btn small ghost" data-drop="${esc(e.id)}">احذف</button></div>`).join('')}</div></section>` : '';
+  };
+
   return {
     title: 'استلام سيارة',
-    html: `<div class="page-head"><div><h1>استلام سيارة</h1><p class="lead">ابحث أولاً، فإن كانت السيارة مسجلة ظهرت مع صاحبها.</p></div></div><div id="stage">${searchHtml}</div>`,
+    html: `<div class="page-head"><div><h1>استلام سيارة</h1><p class="lead">ابحث أولاً، فإن كانت السيارة مسجلة ظهرت مع صاحبها.</p></div></div>${pendingHtml()}<div id="stage">${searchHtml}</div>`,
     bind(el) {
+      el.querySelector('#sync-now')?.addEventListener('click', (ev) => busy(ev.currentTarget, async () => {
+        const r = await syncOutbox();
+        toast(r.sent.length ? `أُرسل ${num(r.sent.length)} استلام` : r.failed ? 'تعذّر إرسال بعضها. راجع السبب تحت كل استلام' : 'لا يوجد اتصال بعد', r.sent.length ? undefined : 'error');
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      }));
+      el.querySelectorAll('[data-drop]').forEach((b) => b.addEventListener('click', () => {
+        if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'تأكيد الحذف'; b.classList.add('danger'); return; }
+        outbox.remove(b.dataset.drop); window.dispatchEvent(new HashChangeEvent('hashchange'));
+      }));
       const stage = el.querySelector('#stage');
       let timer;
 
@@ -126,29 +145,34 @@ export default async function intake() {
             return;
           }
           await busy(ev.submitter, async () => {
-            let customer = picked.customer;
-            if (!customer) customer = await db.insert('customers', { name: d.c_name, phone: d.c_phone, customer_type: d.c_type });
-            let vehicle = picked.vehicle;
-            if (picked.transfer) await db.rpc('transfer_vehicle', { p_vehicle: vehicle.id, p_customer: customer.id });
-            if (!vehicle) {
-              try {
-                vehicle = await db.insert('vehicles', { customer_id: customer.id, ...vehicleRow(d), odometer: d.odometer ? Number(d.odometer) : null });
-              } catch (e) {
-                if (/vehicles_vin_unique/.test(e.message)) throw new Error('رقم الشاصي هذا مسجل لسيارة أخرى. ابحث عنه في أعلى الصفحة.');
-                if (/vehicles_plate_unique|duplicate key/.test(e.message)) throw new Error('هذه اللوحة مسجلة من قبل. ابحث عنها في أعلى الصفحة، واختر «مالك جديد» إن كانت السيارة قد بيعت.');
-                throw e;
-              }
-            }
             const checklist = {};
             checks.forEach((c2, i) => { checklist[c2] = !!d[`chk_${i}`]; });
             const files = [...(form.querySelector('[name="photos"]').files || [])];
             const comeback = stage.querySelector('[name="comeback"]:checked');
-            const job = await db.insert('job_orders', {
-              comeback_of: comeback ? comeback.value : null,
-              vehicle_id: vehicle.id, customer_id: customer.id, complaint: d.complaint,
-              odometer: d.odometer ? Number(d.odometer) : null, fuel_level: Number(d.fuel_level),
-              promised_at: fromLocalInput(d.promised_at), technician_id: d.technician_id, checklist,
-            });
+            const entry = {
+              id: crypto.randomUUID(), at: new Date().toISOString(),
+              label: `${picked.customer?.name || d.c_name} · ${picked.vehicle ? carName(picked.vehicle) : [d.make, d.model].filter(Boolean).join(' ')}${(picked.vehicle?.plate_number || d.plate_number) ? ` · ${picked.vehicle?.plate_number || d.plate_number}` : ''}`,
+              customer_id: picked.customer?.id || null, vehicle_id: picked.vehicle?.id || null, transfer: !!picked.transfer,
+              newCustomer: picked.customer ? null : { id: crypto.randomUUID(), name: d.c_name, phone: d.c_phone, customer_type: d.c_type },
+              newVehicle: picked.vehicle ? null : { id: crypto.randomUUID(), ...vehicleRow(d), odometer: d.odometer ? Number(d.odometer) : null },
+              job: {
+                id: crypto.randomUUID(), comeback_of: comeback ? comeback.value : null, complaint: d.complaint,
+                odometer: d.odometer ? Number(d.odometer) : null, fuel_level: Number(d.fuel_level),
+                promised_at: fromLocalInput(d.promised_at), technician_id: d.technician_id, checklist,
+              },
+            };
+            let job;
+            try {
+              job = await sendIntake(entry);
+            } catch (e) {
+              if (e.status !== 0) throw e;
+              // no internet: keep the intake on this device and send it when the connection returns
+              entry.match = !picked.customer || !picked.vehicle;
+              if (!outbox.add(entry)) throw new Error('لا يوجد اتصال، وتعذّر الحفظ على هذا الجهاز. اكتب البيانات على ورقة وأعد المحاولة عند عودة الإنترنت.');
+              toast(`لا يوجد اتصال. حُفظ الاستلام على هذا الجهاز وسيُرسل تلقائياً عند عودة الإنترنت${files.length ? '. الصور لم تُحفظ، أضفها من أمر العمل لاحقاً' : ''}`);
+              window.dispatchEvent(new HashChangeEvent('hashchange'));
+              return;
+            }
             if (files.length) {
               try {
                 const urls = await uploadMany(files, `jobs/${job.id}`);
@@ -202,7 +226,7 @@ export default async function intake() {
                 picked = { customer: null, vehicle: r.v, transfer: r.c || { name: '' } };
                 showForm();
               }));
-            } catch (e) { results.innerHTML = `<div class="notice error">${esc(e.message)}</div>`; }
+            } catch (e) { results.innerHTML = e.status === 0 ? '<div class="notice warn">لا يوجد اتصال، فالبحث متوقف. اضغط «عميل وسيارة جديدان» واكتب البيانات، وسيُربط الاستلام بالعميل والسيارة المسجلين تلقائياً عند الإرسال.</div>' : `<div class="notice error">${esc(e.message)}</div>`; }
           }, 300);
         });
       };

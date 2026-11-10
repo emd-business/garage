@@ -58,6 +58,19 @@ export function ownerCards(g) {
         <div><button class="btn primary">احفظ</button></div>
       </form>
 
+      ${isOwner ? `<section class="card stack" id="backup">
+        <h2>نسخة من بياناتك</h2>
+        <p class="muted">بياناتك ملكك. نزّل نسخة منها متى شئت واحفظها عندك. ننصح بنسخة كل شهر.</p>
+        <div class="row" style="gap:8px">
+          <button type="button" class="btn primary" data-export="json">نسخة كاملة (ملف واحد)</button>
+          <button type="button" class="btn" data-export="customers">العملاء (Excel)</button>
+          <button type="button" class="btn" data-export="vehicles">السيارات (Excel)</button>
+          <button type="button" class="btn" data-export="items">المخزون (Excel)</button>
+          <button type="button" class="btn" data-export="invoices">الفواتير (Excel)</button>
+        </div>
+        <p class="subtle">النسخة الكاملة تحوي كل شيء: العملاء والسيارات وأوامر العمل والفواتير والمدفوعات والمخزون والمشتريات والمصروفات والقيود. الصور تبقى على الخادم وروابطها داخل النسخة.</p>
+      </section>` : ''}
+
       <form class="card stack" id="wa" novalidate>
         <h2>رسائل واتساب</h2>
         <p class="subtle">اكتب الرسائل بأسلوبك. اضغط على أي متغيّر لإضافته في مكان المؤشر، ويُستبدل عند الإرسال ببيانات العميل والسيارة.</p>
@@ -122,6 +135,27 @@ export function bindOwner(el, g) {
   el.querySelector('#stamp-rm')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
     await db.update('garages', { id: `eq.${g.id}` }, { stamp_url: null }); await refreshGarage(); reload();
   }));
+
+  // ---- data export ----
+  const download = (name, text, type) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  const csv = (rows, cols) => '\uFEFF' + [cols.map((c) => c[0]), ...rows.map((r) => cols.map((c) => (typeof c[1] === 'function' ? c[1](r) : r[c[1]])))]
+    .map((line) => line.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const stamp = new Date().toISOString().slice(0, 10);
+  el.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
+    const d = await db.rpc('export_garage');
+    const kind = b.dataset.export;
+    const cust = Object.fromEntries((d.customers || []).map((c) => [c.id, c]));
+    if (kind === 'json') download(`emd-garage-backup-${stamp}.json`, JSON.stringify(d, null, 1), 'application/json');
+    else if (kind === 'customers') download(`العملاء ${stamp}.csv`, csv(d.customers, [['الاسم', 'name'], ['الهاتف', 'phone'], ['البريد', 'email'], ['النوع', 'customer_type'], ['الرقم الضريبي', 'vat_number'], ['ملاحظات', 'notes']]), 'text/csv;charset=utf-8');
+    else if (kind === 'vehicles') download(`السيارات ${stamp}.csv`, csv(d.vehicles, [['اللوحة', (r) => `${r.plate_number || ''} ${r.plate_letters || ''}`.trim()], ['الشركة', 'make'], ['الطراز', 'model'], ['السنة', 'year'], ['اللون', 'color'], ['الشاصي', 'vin'], ['العداد', 'odometer'], ['المالك', (r) => cust[r.customer_id]?.name], ['هاتف المالك', (r) => cust[r.customer_id]?.phone]]), 'text/csv;charset=utf-8');
+    else if (kind === 'items') download(`المخزون ${stamp}.csv`, csv(d.items, [['الصنف', 'name'], ['الرمز', 'sku'], ['الفئة', 'category'], ['المكان', 'location'], ['الكمية', 'qty'], ['التكلفة', 'unit_cost'], ['سعر البيع', 'sell_price'], ['حد إعادة الطلب', 'reorder_level']]), 'text/csv;charset=utf-8');
+    else download(`الفواتير ${stamp}.csv`, csv(d.invoices, [['رقم الفاتورة', 'invoice_no'], ['التاريخ', (r) => String(r.issued_at || '').slice(0, 10)], ['العميل', (r) => cust[r.customer_id]?.name], ['العمالة', 'labor_total'], ['القطع', 'parts_total'], ['الخصم', 'discount'], ['قبل الضريبة', 'subtotal'], ['الضريبة', 'vat'], ['الإجمالي', 'total']]), 'text/csv;charset=utf-8');
+    toast('نُزّل الملف');
+  })));
 
   el.querySelector('#numbering')?.addEventListener('click', () => openDialog('تغيير الترقيم', `
     <p class="muted">اكتب الرقم الذي يبدأ منه الترقيم القادم. لا يمكن إرجاعه لرقم أصغر، فتسلسل الفواتير يجب ألا ينقص.</p>

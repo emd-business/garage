@@ -66,6 +66,9 @@ export default async function admin() {
         </section>
         <form class="card stack" id="psettings" novalidate><h2>إعدادات المنصة</h2>
           ${field('مدة التجربة المجانية للكراجات الجديدة (يوم)', `<input name="trial_days" type="number" min="0" step="1" value="${esc(ps?.trial_days ?? 30)}">`, { hint: '٠ يعني تجربة بلا تاريخ انتهاء' })}
+          ${field('بريد الدعم', `<input name="support_email" type="email" dir="ltr" value="${esc(ps?.support_email || '')}">`, { hint: 'يظهر في صفحتي سياسة الخصوصية وشروط الاستخدام، وإليه تُرسل طلبات حذف الحساب.' })}
+          ${field('واتساب الدعم', `<input name="support_whatsapp" type="tel" dir="ltr" placeholder="9689xxxxxxx" value="${esc(ps?.support_whatsapp || '')}">`)}
+          <p class="subtle"><a href="#/privacy" target="_blank" rel="noopener">سياسة الخصوصية</a> · <a href="#/terms" target="_blank" rel="noopener">شروط الاستخدام</a></p>
           <div><button class="btn">احفظ</button></div>
         </form>
       </div>`,
@@ -135,8 +138,9 @@ export default async function admin() {
       el.querySelectorAll('[data-plan]').forEach((b) => b.addEventListener('click', () => planDialog(plans.find((p) => p.id === b.dataset.plan))));
       el.querySelector('#psettings').addEventListener('submit', (ev) => {
         ev.preventDefault();
-        const v = Number(new FormData(ev.target).get('trial_days') || 0);
-        busy(ev.submitter, async () => { await db.update('platform_settings', { id: 'eq.1' }, { trial_days: v }); toast('حُفظت الإعدادات'); });
+        const fd = new FormData(ev.target);
+        const v = Number(fd.get('trial_days') || 0);
+        busy(ev.submitter, async () => { await db.update('platform_settings', { id: 'eq.1' }, { trial_days: v, support_email: (fd.get('support_email') || '').trim() || null, support_whatsapp: (fd.get('support_whatsapp') || '').trim() || null }); toast('حُفظت الإعدادات'); });
       });
     },
   };

@@ -429,3 +429,16 @@ dialog.sign-dialog { width: min(680px, calc(100vw - 24px)); }
 .admin-bar img { height: 30px; }
 .admin-bar .who { flex: 1; color: var(--chrome-muted); font-size: 14px; }
 .admin-only .content { max-width: 1280px; margin-inline: auto; }
+/* legal pages, demo garage */
+.legal { min-height: 100vh; background: var(--surface-page); }
+.legal-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 24px; background: var(--chrome-bg); }
+.legal-bar img { height: 30px; display: block; }
+.legal-doc { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; line-height: 1.9; }
+.legal-doc h1 { margin-bottom: 4px; }
+.legal-doc h2 { margin-top: 28px; font-size: 19px; }
+.legal-doc ul { padding-inline-start: 22px; display: flex; flex-direction: column; gap: 6px; }
+.legal-links { font-size: 13px; text-align: center; margin: 0; }
+.legal-links a { color: var(--ink-muted); }
+.demo-note { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.demo-strip { display: none; }
+@media (max-width: 860px) { .demo-strip { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 16px; background: var(--info-soft); color: var(--info-ink); font-size: 14px; } }

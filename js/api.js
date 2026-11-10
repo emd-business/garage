@@ -150,7 +150,8 @@ async function rest(method, path, { body, prefer, headers = {} } = {}) {
 // Reads that change nothing; their answers are kept on this device for viewing without internet.
 const READ_RPC = new Set(['dashboard_today', 'garage_staff', 'my_role', 'is_platform_admin', 'report_summary', 'trial_balance', 'account_ledger',
   'customer_statement', 'supplier_statement', 'service_due', 'monthly_costs', 'job_time', 'job_lines_for_tech', 'warranty_check', 'tech_time',
-  'admin_garages', 'my_subscription', 'portal_job']);
+  'admin_garages', 'my_subscription', 'portal_job', 'current_branch', 'my_limits', 'setup_progress', 'cash_status', 'sublet_suppliers',
+  'reorder_suggestions', 'platform_contact', 'global_search']);
 const CACHE = 'emd-garage-data';
 function cacheKey(method, path, body) {
   const who = (session && session.user && session.user.id) || 'anon';
@@ -172,7 +173,7 @@ function setOffline(off, fromCache) {
   let bar = document.getElementById('offline-bar');
   if (next === 'up') { bar?.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'offline-bar'; bar.setAttribute('role', 'status'); document.body.prepend(bar); }
-  bar.textContent = 'لا يوجد اتصال بالإنترنت. تعرض آخر بيانات محفوظة على هذا الجهاز، والحفظ متوقف حتى يعود الاتصال.';
+  bar.textContent = 'لا يوجد اتصال بالإنترنت. تُعرض آخر بيانات محفوظة على هذا الجهاز. استلام السيارات يُحفظ على الجهاز ويُرسل لاحقاً، وباقي الحفظ متوقف حتى يعود الاتصال.';
 }
 window.addEventListener('offline', () => setOffline(true, true));
 window.addEventListener('online', () => { setOffline(false); window.dispatchEvent(new HashChangeEvent('hashchange')); });
